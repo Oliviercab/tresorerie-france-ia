@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Trésorerie France IA</title>
+<link rel="icon" href="assets/logo-france-ia.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Écran de verrouillage : tout le contenu est chiffré (data.enc), il ne s'ouvre qu'avec le mot de passe. -->
+<div id="verrou" class="verrou">
+  <form class="carte" id="form-verrou" autocomplete="off">
+    <img src="assets/logo-france-ia.webp" alt="France IA">
+    <h1 class="page">Trésorerie France IA</h1>
+    <p class="contrat">Accès réservé. Saisissez le mot de passe qui vous a été communiqué.</p>
+    <label for="mdp">Mot de passe</label>
+    <input class="champ" id="mdp" type="password" autocomplete="current-password" required>
+    <div class="err" id="err-verrou" role="alert"></div>
+    <button class="btn primaire" type="submit" style="width:100%;margin-top:8px">Ouvrir</button>
+  </form>
+</div>
+
+<!-- Première mise en place (une seule fois, par Olivier) : les clés sont créées dans le navigateur ; le mot de passe ne quitte jamais cet écran. -->
+<div id="installation" class="verrou hidden">
+  <form class="carte" id="form-installation" autocomplete="off" style="max-width:460px">
+    <img src="assets/logo-france-ia.webp" alt="France IA">
+    <h1 class="page">Mise en place de l'accès</h1>
+    <p class="contrat">Deux secrets, créés ici et jamais transmis : le mot de passe de consultation (à partager avec Tanguy et l'équipe) et votre code d'édition (pour vous seul, il permet d'enregistrer vos décisions dans l'Excel).</p>
+    <label for="i-mdp">Mot de passe de consultation (12 caractères minimum)</label>
+    <input class="champ" id="i-mdp" type="password" minlength="12" required>
+    <label for="i-mdp2">Confirmer le mot de passe</label>
+    <input class="champ" id="i-mdp2" type="password" minlength="12" required>
+    <label for="i-code">Code d'édition (10 caractères minimum, différent du mot de passe)</label>
+    <input class="champ" id="i-code" type="password" minlength="10" required>
+    <label for="i-code2">Confirmer le code d'édition</label>
+    <input class="champ" id="i-code2" type="password" minlength="10" required>
+    <div class="err" id="err-installation" role="alert"></div>
+    <button class="btn primaire" type="submit" style="width:100%;margin-top:8px">Créer les clés</button>
+  </form>
+</div>
+
+<div id="appli" class="hidden">
+  <header class="coque">
+    <div class="coque-in">
+      <img src="assets/logo-france-ia.webp" alt="France IA">
+      <div class="coque-titre"><strong>Trésorerie</strong><span id="arrete"></span></div>
+      <div class="coque-actions">
+        <span id="chip-edition" class="chip brand hidden">Mode édition</span>
+        <button class="btn" id="btn-edition" type="button">Mode édition</button>
+        <button class="btn" id="btn-quitter" type="button">Verrouiller</button>
+      </div>
+    </div>
+    <nav class="onglets" role="tablist" aria-label="Rubriques">
+      <button role="tab" data-vue="ensemble" aria-selected="true">Vue d'ensemble</button>
+      <button role="tab" data-vue="pilotage" aria-selected="false">Pilotage</button>
+      <button role="tab" data-vue="tresorerie" aria-selected="false">Trésorerie</button>
+      <button role="tab" data-vue="cr" aria-selected="false">Compte de résultat</button>
+      <button role="tab" data-vue="bilan" aria-selected="false">Bilan</button>
+      <button role="tab" data-vue="bp" aria-selected="false">BP</button>
+      <button role="tab" data-vue="synthese" aria-selected="false">Synthèse</button>
+    </nav>
+  </header>
+  <main id="vue"></main>
+  <footer class="pied" id="pied"></footer>
+</div>
+<script src="config.js"></script>
+<script src="engine.js"></script>
+<script src="crypto.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
