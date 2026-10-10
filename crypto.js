@@ -57,5 +57,16 @@
     for (var i = 0; i < 4; i++) x += ("0" + h[i].toString(16)).slice(-2);
     x = x.toUpperCase(); return x.slice(0, 4) + "-" + x.slice(4);
   }
-  root.Coffre = { empreinte: empreinte, creerCles: creerCles, ouvrir: ouvrir, dechiffrer: dechiffrer, ouvrirEdition: ouvrirEdition, signer: signer, exporterJwk: exporterJwk, importerJwk: importerJwk };
+  // accès complet (détail nominatif) : paire RSA-OAEP dont la clé privée est chiffrée par le code d'édition d'Olivier
+  async function creerCleComplet(code) {
+    var k = await S.generateKey({ name: "RSA-OAEP", modulusLength: 3072, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["encrypt", "decrypt"]);
+    var w = await wrap(code, await S.exportKey("pkcs8", k.privateKey));
+    w.spki = b64(await S.exportKey("spki", k.publicKey));
+    return w;
+  }
+  async function ouvrirComplet(keys, code) {
+    var pk = await unwrap(code, keys.complet);
+    return S.importKey("pkcs8", pk, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
+  }
+  root.Coffre = { creerCleComplet: creerCleComplet, ouvrirComplet: ouvrirComplet, empreinte: empreinte, creerCles: creerCles, ouvrir: ouvrir, dechiffrer: dechiffrer, ouvrirEdition: ouvrirEdition, signer: signer, exporterJwk: exporterJwk, importerJwk: importerJwk };
 })(this);

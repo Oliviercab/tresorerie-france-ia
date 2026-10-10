@@ -108,7 +108,18 @@
               agg_closers: A.closers, agg_setters: A.setters, agg_cdi: A.cdi, agg_cuma: zeros(N) };
     D.forEach(function (o) { if (!o.R) return; for (var j = 0; j < N; j++) {
       if (o.type !== "Ads") G.agg_cost_sal[j] += o.cost[j];
-      G.agg_eco[j] += o.eco[j]; G.agg_dca[j] += o.dca[j]; G.agg_enc[j] += o.enc[j]; G.agg_cuma[j] += o.cuma[j]; } });
+      G.agg_eco[j] += o.eco[j]; } });
+    // ventes en plus de l'ensemble des décisions retenues, calculées ensemble (pas la somme des effets marginaux)
+    G.agg_dv = zeros(N);
+    for (var j1 = 0; j1 < N; j1++) {
+      G.agg_dv[j1] = Math.min(C.ch_ventes_ads[j1], C.ch_clo_dispo[j1] * P.cap_closer, C.ch_set_dispo[j1] * P.cap_setter)
+        - Math.min(C.ch_ventes_ads[j1] - A.ads[j1] * P.conv / P.cpl, n(P.closers_act) * P.cap_closer, n(P.setters_act) * P.cap_setter);
+      G.agg_dca[j1] = G.agg_dv[j1] * n(P.panier);
+    }
+    for (j1 = 0; j1 < N; j1++) {
+      G.agg_enc[j1] = (j1 + 1 - de < 1) ? 0 : G.agg_dca[j1 - de];
+      G.agg_cuma[j1] = (j1 ? G.agg_cuma[j1 - 1] : 0) + G.agg_eco[j1] - G.agg_cost_sal[j1] - A.ads[j1] + G.agg_enc[j1] * (n(P.marge) - n(P.commission));
+    }
     for (var j2 = 0; j2 < N; j2++) {
       G.agg_var[j2] = G.agg_enc[j2] * (1 - n(P.marge) + n(P.commission)) - G.agg_eco[j2];
       G.agg_var_cr[j2] = G.agg_dca[j2] * (1 - n(P.marge) + n(P.commission)) - G.agg_eco[j2];
@@ -159,6 +170,89 @@
     };
     return { P: P, chain: C, agg: G, decisions: D, results: res, treso: treso, hors: hors, capx: capx, top: top };
   }
-  var api = { run: run, derive: derive, TYPES: TYPES };
+  /* Plan de réinvestissement : utilise la trésorerie au-dessus du plancher (plus une marge de sécurité) pour, dans l'ordre,
+     1) augmenter les ads par paliers, avec les closers et setters nécessaires pour traiter les ventes en plus,
+     2) remplacer des sessions freelances par des formateurs CDI quand c'est une économie nette,
+     3) affecter l'enveloppe restante à des recrutements structurants (rôles à définir par Olivier).
+     Contrainte : la trésorerie, en ne comptant qu'une part (haircut) des ventes rapportées, reste au-dessus du plancher + marge
+     sur tout l'horizon. Les décisions déjà retenues sont conservées. */
+  function plan(input, opts) {
+    var o = Object.assign({ marge_securite: 20000, part_retour: 0.5, pas_ads: 2500, ads_max: 1, cdi_max: 0.5, app_session: 9, mois_test: 3 }, opts || {});
+    var P = derive(input.params), M = input.months, N = M.length, fc = input.fc || 0, B = input.base, L = input.labels;
+    var seuil = n(P.plancher) + n(o.marge_securite), h = Math.max(0, Math.min(1, n(o.part_retour)));
+    var base = (input.decisions || []).filter(function (d) { return d && d.type; });
+    function evaluer(pl) {
+      var r = run(Object.assign({}, input, { decisions: base.concat(pl) })), G = r.agg;
+      var th = r.hors.slice(), tp = r.hors.slice(), cp = 0;
+      for (var j = 0; j < N; j++) {
+        cp += G.agg_eco[j] - G.agg_cost_sal[j] - G.agg_ads[j];          // coûts et économies, sans les ventes
+        tp[j] += cp; th[j] += cp + h * (G.agg_cuma[j] - cp);             // + une part seulement du retour des ventes
+      }
+      var minTest = Infinity; for (j = fc; j < Math.min(N, fc + n(o.mois_test)); j++) minTest = Math.min(minTest, tp[j]);
+      return { r: r, th: th, tp: tp, min: minArr(th, fc), ok: minArr(th, fc) >= seuil && minTest >= n(P.plancher) };
+    }
+    function retenue(d) { return Object.assign({ retenue: "Oui", cout: null, plan: true }, d); }
+    var ref = evaluer([]), adsMoy = 0, c = 0;
+    for (var j = fc; j < N; j++) { adsMoy += n(B.ads_bp[j]) + ref.r.agg.agg_ads[j]; c++; }
+    adsMoy = c ? adsMoy / c : 0;
+    var maxAds = Math.max(0, n(o.ads_max) * adsMoy), pas = Math.max(500, n(o.pas_ads));
+    // 1. ads + équipe commerciale
+    function equipe(extra) {
+      var pl = [], cloH = 0, setH = 0, a0 = ref.r.agg;
+      for (var j = fc; j < N; j++) {
+        var ventes = (n(B.ads_bp[j]) + a0.agg_ads[j] + extra) * P.conv / (P.cpl || 1);
+        cloH = Math.max(cloH, Math.ceil(ventes / (P.cap_closer || 1) - 1e-9) - (n(P.closers_act) + a0.agg_closers[j]));
+        setH = Math.max(setH, Math.ceil(ventes / (P.cap_setter || 1) - 1e-9) - (n(P.setters_act) + a0.agg_setters[j]));
+      }
+      var depart = (cloH > 0 || setH > 0) ? Math.min(N - 1, fc + Math.max(n(P.delai_com) | 0, 0)) : fc;
+      if (cloH > 0) pl.push(retenue({ libelle: "Plan : " + cloH + " closer" + (cloH > 1 ? "s" : "") + " de plus", type: "Closer", quantite: cloH, arrivee: M[fc] }));
+      if (setH > 0) pl.push(retenue({ libelle: "Plan : " + setH + " setter" + (setH > 1 ? "s" : "") + " de plus", type: "Setter", quantite: setH, arrivee: M[fc] }));
+      if (extra > 0) pl.push(retenue({ libelle: "Plan : ads +" + Math.round(extra).toLocaleString("fr-FR") + " € par mois", type: "Ads", quantite: extra, arrivee: M[depart] }));
+      return pl;
+    }
+    var extra = 0, pl = [], ev = ref;
+    while (extra + pas <= maxAds + 1e-6) {
+      var cand = equipe(extra + pas), e = evaluer(cand);
+      if (!e.ok) break;
+      extra += pas; pl = cand; ev = e;
+    }
+    // 2. formateurs CDI : économie nette, en gardant une part de sessions en freelance
+    var minFree = Infinity; for (j = fc; j < N; j++) minFree = Math.min(minFree, n(B.free_sess[j]));
+    var maxCdi = Math.floor(n(o.cdi_max) * (isFinite(minFree) ? minFree : 0) / (n(P.sess_cdi_mois) || 1));
+    var cdi = 0, pl0 = null;
+    for (var k = 1; k <= maxCdi; k++) {
+      var cd = pl.concat([retenue({ libelle: "Plan : " + k + " formateur" + (k > 1 ? "s" : "") + " CDI de plus", type: "Formateur CDI", quantite: k, arrivee: M[Math.min(N - 1, fc + 1)] })]);
+      var e2 = evaluer(cd), last = e2.r.decisions[e2.r.decisions.length - 1];
+      if (!e2.ok || !(last.eco[N - 1] > last.cost[N - 1])) break;
+      cdi = k; ev = e2; pl0 = cd;
+    }
+    if (cdi) pl = pl0;
+    // 3. enveloppe restante : dépense constante supportable dès le mois suivant, financée SANS compter les ventes en plus
+    var s0 = Math.min(N - 1, fc + 1), env = Infinity;
+    for (var t = s0; t < N; t++) env = Math.min(env, (ev.tp[t] - seuil) / (t - s0 + 1));
+    env = Math.max(0, isFinite(env) ? env : 0);
+    var nSal = n(P.cout_salarie) ? Math.floor(env / n(P.cout_salarie)) : 0;
+    if (nSal > 0) {
+      var cs = pl.concat([retenue({ libelle: "Plan : " + nSal + " recrutement" + (nSal > 1 ? "s" : "") + " structurant" + (nSal > 1 ? "s" : "") + " (rôles à définir)", type: "Salarié", quantite: nSal, arrivee: M[s0] })]);
+      var e3 = evaluer(cs);
+      if (e3.ok) { pl = cs; ev = e3; env -= nSal * n(P.cout_salarie); }
+    }
+    // indicateurs
+    var r = ev.r, ventesPlus = 0, caPlus = 0, invest = 0, cnt = 0, jmin = fc;
+    for (j = fc; j < N; j++) { ventesPlus += r.agg.agg_dv[j] - ref.r.agg.agg_dv[j]; caPlus += r.agg.agg_dca[j] - ref.r.agg.agg_dca[j]; }
+    r.decisions.forEach(function (d, i) { if (i < base.length || !d.R) return; for (var j = fc; j < N; j++) invest += d.cost[j] - d.eco[j]; });
+    for (j = fc; j < N; j++) cnt++;
+    for (j = fc; j < N; j++) if (ev.th[j] === ev.min) { jmin = j; break; }
+    var sessPlus = (ventesPlus / Math.max(1, cnt)) * n(P.app_par_vente) / (n(o.app_session) || 9);
+    var sallesMax = 0; for (j = fc; j < N; j++) sallesMax = Math.max(sallesMax, (n(B.sessions[j]) + sessPlus) * 12 / 52);
+    return {
+      options: o, decisions: pl, ads_extra: extra, ads_max: maxAds, cdi: cdi, salaries: nSal, enveloppe_restante: env,
+      point_bas: ev.min, mois_point_bas: L[jmin], point_bas_prudent: minArr(ev.tp, fc), point_bas_reference: minArr(ref.th, fc),
+      treso_fin: ev.th[N - 1], treso_fin_reference: ref.th[N - 1], ventes_plus_mois: ventesPlus / Math.max(1, cnt), ca_plus: caPlus,
+      investissement_mensuel: invest / Math.max(1, cnt), sessions_plus_mois: sessPlus, salles_ok: sallesMax <= n(P.parc_sem),
+      trajectoire: ev.th, trajectoire_prudente: ev.tp, trajectoire_reference: ref.th, seuil: seuil
+    };
+  }
+  var api = { run: run, derive: derive, plan: plan, TYPES: TYPES };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Engine = api;
 })(this);

@@ -8,7 +8,7 @@
 <link rel="icon" href="assets/logo-france-ia.webp">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <!-- Écran de verrouillage : tout le contenu est chiffré (data.enc), il ne s'ouvre qu'avec le mot de passe. -->
@@ -29,7 +29,7 @@
   <form class="carte" id="form-installation" autocomplete="off" style="max-width:460px">
     <img src="assets/logo-france-ia.webp" alt="France IA">
     <h1 class="page">Mise en place de l'accès</h1>
-    <p class="contrat">Deux secrets, créés ici et jamais transmis : le mot de passe de consultation (à partager avec Tanguy et l'équipe) et votre code d'édition (pour vous seul, il permet d'enregistrer vos décisions dans l'Excel).</p>
+    <p class="contrat">Deux secrets, créés ici et jamais transmis : le mot de passe de consultation (à partager avec Tanguy et l'équipe) et votre code d'édition (pour vous seul : il ouvre le détail nominatif et permet d'enregistrer vos décisions dans l'Excel).</p>
     <label for="i-mdp">Mot de passe de consultation (12 caractères minimum)</label>
     <input class="champ" id="i-mdp" type="password" minlength="12" required>
     <label for="i-mdp2">Confirmer le mot de passe</label>
@@ -44,32 +44,65 @@
 </div>
 
 <div id="appli" class="hidden">
-  <header class="coque">
-    <div class="coque-in">
-      <img src="assets/logo-france-ia.webp" alt="France IA">
-      <div class="coque-titre"><strong>Trésorerie</strong><span id="arrete"></span></div>
-      <div class="coque-actions">
-        <span id="chip-edition" class="chip brand hidden">Mode édition</span>
-        <button class="btn" id="btn-edition" type="button">Mode édition</button>
-        <button class="btn" id="btn-quitter" type="button">Verrouiller</button>
-      </div>
-    </div>
-    <nav class="onglets" role="tablist" aria-label="Rubriques">
-      <button role="tab" data-vue="ensemble" aria-selected="true">Vue d'ensemble</button>
-      <button role="tab" data-vue="pilotage" aria-selected="false">Pilotage</button>
-      <button role="tab" data-vue="tresorerie" aria-selected="false">Trésorerie</button>
-      <button role="tab" data-vue="cr" aria-selected="false">Compte de résultat</button>
-      <button role="tab" data-vue="bilan" aria-selected="false">Bilan</button>
-      <button role="tab" data-vue="bp" aria-selected="false">BP</button>
-      <button role="tab" data-vue="synthese" aria-selected="false">Synthèse</button>
+  <aside class="nav" id="nav" aria-label="Navigation">
+    <div class="nav-logo"><img src="assets/logo-france-ia.webp" alt="France IA"><span>Trésorerie</span></div>
+    <nav>
+      <p class="nav-g">Piloter</p>
+      <a href="#/accueil" data-v="accueil"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-4v-4H8v4H4a1 1 0 0 1-1-1z"/></svg>Accueil</a>
+      <a href="#/pilotage" data-v="pilotage"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16h14M5 13l3-4 3 2 4-6"/></svg>Pilotage et plan</a>
+      <a href="#/budget" data-v="budget"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16V8m4 8V4m4 12v-6m4 6v-3"/></svg>Réel et BP</a>
+      <p class="nav-g">Comprendre</p>
+      <a href="#/tresorerie" data-v="tresorerie"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h9"/></svg>Trésorerie</a>
+      <a href="#/resultat" data-v="resultat"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 15l4-5 3 3 5-7"/></svg>Résultat</a>
+      <a href="#/bp" data-v="bp"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12v12H4zM4 9h12M9 4v12"/></svg>BP détaillé</a>
+      <a href="#/bilan" data-v="bilan"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M5 7h10M3 13l2-6 2 6zm10 0 2-6 2 6z"/></svg>Bilan</a>
+      <p class="nav-g">Agir</p>
+      <a href="#/transactions" data-v="transactions"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>Transactions</a>
+      <a href="#/factures" data-v="factures"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5zM8 9h5M8 12h5"/></svg>Factures clients</a>
+      <a href="#/justificatifs" data-v="justificatifs"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 10l3 3 5-6M4 3h12v14H4z"/></svg>Justificatifs<span class="nav-n" id="n-justif"></span></a>
+      <a href="#/economies" data-v="economies"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M13.5 6.5C13 5 11.7 4.5 10 4.5S6.5 5.3 6.5 7s1.5 2.3 3.5 2.8 3.8 1 3.8 2.9-1.6 2.8-3.8 2.8-3.5-.7-4-2.2"/></svg>Économies</a>
     </nav>
-  </header>
-  <main id="vue"></main>
-  <footer class="pied" id="pied"></footer>
+    <div class="nav-pied">
+      <button class="nav-acces" id="btn-acces" type="button"><span id="acces-l">Vue équipe</span><small id="acces-s">Ouvrir l'accès complet</small></button>
+      <button class="btn-lien" id="btn-quitter" type="button">Verrouiller</button>
+    </div>
+  </aside>
+  <div class="zone">
+    <header class="barre">
+      <button class="btn-ic menu" id="btn-menu" type="button" aria-label="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+      <div class="periode" id="periode" role="group" aria-label="Période"></div>
+      <div class="recherche">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg>
+        <input id="q" type="search" placeholder="Rechercher une transaction, un fournisseur, une catégorie" autocomplete="off" aria-label="Rechercher">
+        <kbd>/</kbd>
+        <div class="q-res hidden" id="q-res" role="listbox"></div>
+      </div>
+      <span class="maj" id="arrete"></span>
+    </header>
+    <main id="vue" tabindex="-1"></main>
+    <footer class="pied" id="pied"></footer>
+  </div>
+  <aside class="tiroir" id="tiroir" aria-hidden="true" aria-label="Détail">
+    <div class="tiroir-h"><div id="tiroir-t"></div><button class="btn-ic" id="tiroir-x" type="button" aria-label="Fermer"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg></button></div>
+    <div class="tiroir-c" id="tiroir-c"></div>
+  </aside>
+  <div class="voile hidden" id="voile"></div>
+  <dialog id="dlg-code">
+    <form method="dialog" id="form-code">
+      <h2>Accès complet et édition</h2>
+      <p class="contrat">Votre code d'édition ouvre le détail nominatif (salaires, freelances, clients) et permet d'enregistrer vos décisions dans l'Excel. Il ne quitte pas ce navigateur.</p>
+      <label for="code">Code d'édition</label>
+      <input class="champ" id="code" type="password" autocomplete="off" required>
+      <div class="err" id="err-code" role="alert"></div>
+      <div class="dlg-b"><button class="btn" value="annuler" type="button" id="code-annuler">Annuler</button><button class="btn primaire" type="submit">Ouvrir</button></div>
+    </form>
+  </dialog>
+  <div class="toast hidden" id="toast" role="status"></div>
 </div>
-<script src="config.js"></script>
-<script src="engine.js"></script>
-<script src="crypto.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=2"></script>
+<script src="engine.js?v=2"></script>
+<script src="crypto.js?v=2"></script>
+<script src="charts.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
