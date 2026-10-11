@@ -271,3 +271,15 @@ table.t.dec-table td, table.t.dec-table th { padding: 5px 6px; }
 }
 @media (max-width: 560px) { .g4, .afaire { grid-template-columns: 1fr 1fr; } .kpi .val { font-size: 19px; } table.t th:first-child, table.t td:first-child { min-width: 170px; } .tiroir dl { grid-template-columns: 1fr; } }
 @media print { .nav, .barre, .sim-barre, .outils, .tiroir { display: none; } body { background: #fff; } .carte, .tab-wrap { box-shadow: none; } }
+
+/* ---------------------------------------------------------------- vision classeur (onglets façon Excel) */
+.xtabs { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; scrollbar-width: thin; border-bottom: 2px solid var(--brand-600); margin: 0 0 14px; padding: 2px 2px 0; }
+.xtabs button { flex: 0 0 auto; border: 1px solid var(--surface-200); border-bottom: 0; background: var(--surface-100); color: var(--ink-500); font-size: 13px; padding: 6px 14px; cursor: pointer; border-radius: 6px 6px 0 0; white-space: nowrap; }
+.xtabs button:hover { background: var(--surface-0); color: var(--ink-700); }
+.xtabs button[aria-pressed="true"] { background: var(--brand-600); border-color: var(--brand-600); color: #fff; font-weight: 600; }
+.xtabs .bd-sep { flex: 0 0 auto; align-self: center; width: 1px; height: 18px; background: var(--surface-300); margin: 0 4px; }
+.t td.lib { text-align: left; white-space: nowrap; max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+.chip.cat { background: var(--surface-100); color: var(--ink-500); }
+.saisie { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #bdd7ee; border: 1px solid #8ab4d8; margin-right: 6px; vertical-align: baseline; }
+.rapp-ok { border-left: 3px solid var(--success-200); }
+.rapp-warn { border-left: 3px solid var(--warning-200); }

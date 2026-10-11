@@ -140,7 +140,7 @@
     X.cur = D.meta.arrete ? D.meta.arrete.slice(0, 7) : D.months[0].key;
     // transactions en objets
     var T = D.transactions || { cols: [], rows: [] }, c = {}; T.cols.forEach(function (k, i) { c[k] = i; });
-    X.tx = T.rows.map(function (r) { return { id: r[c.id], date: r[c.date], m: r[c.date].slice(0, 7), mt: r[c.montant], cp: r[c.contrepartie], lib: r[c.libelle], flux: r[c.flux], rub: r[c.rubrique], sr: r[c.sous_rubrique], det: r[c.detail], pole: r[c.pole], j: r[c.justificatif], type: r[c.type], cq: r[c.categorie_qonto], note: r[c.note] }; });
+    X.tx = T.rows.map(function (r) { return { id: r[c.id], date: r[c.date], m: r[c.date].slice(0, 7), mt: r[c.montant], cp: r[c.contrepartie], lib: r[c.libelle], flux: r[c.flux], rub: r[c.rubrique], sr: r[c.sous_rubrique], det: r[c.detail], pole: r[c.pole], j: r[c.justificatif], type: r[c.type], cq: r[c.categorie_qonto], note: r[c.note], ref: c.reference == null ? "" : r[c.reference] }; });
     var F = D.factures || { cols: [], rows: [] }, fc = {}; F.cols.forEach(function (k, i) { fc[k] = i; });
     X.fac = F.rows.map(function (r) { var o = {}; F.cols.forEach(function (k) { o[k] = r[fc[k]]; }); return o; });
     // arbre de trésorerie
@@ -203,6 +203,7 @@
 
   // ------------------------------------------------------------------ routeur
   var VUES = { accueil: vueAccueil, pilotage: vuePilotage, budget: vueBudget, tresorerie: vueTresorerie, resultat: vueResultat, bp: vueBP, bilan: vueBilan,
+               classeur: vueClasseur, rapprochement: vueRapprochement,
                transactions: vueTransactions, factures: vueFactures, justificatifs: vueJustificatifs, economies: vueEconomies };
   function route() {
     var h = (location.hash || "#/accueil").replace(/^#\/?/, "").split("?")[0];
@@ -305,7 +306,9 @@
   function vueAccueil(v) {
     var D = DATA, A = D.analyses || {}, J = A.justificatifs || {}, top = (D.pilotage || {}).top || {}, h = "";
     var retard = IX.fac.filter(function (f) { return f.statut === "unpaid" && f.payeur !== "CPF" && f.echeance && f.echeance < D.meta.arrete; });
-    h += '<div class="entete"><div><h1 class="page">Accueil</h1><p class="contrat">Où en est la trésorerie, où elle va, et ce qui demande votre attention. Données arrêtées au ' + esc(dLong(D.meta.arrete)) + ".</p></div></div>";
+    h += '<div class="entete"><div><h1 class="page">À retenir</h1><p class="contrat">Le résumé du classeur, en graphiques : trésorerie, activité, paie, CPF, et ce qui demande votre attention. Données arrêtées au ' + esc(dLong(D.meta.arrete)) + ". Pour la vision cellule par cellule : <a href=\"#/classeur\">le classeur, onglet par onglet</a>.</p></div></div>";
+    var VF = D.meta.verifie;
+    if (VF) h += '<div class="bandeau info">Vérifié le ' + esc(dLong(VF.le)) + " : Qonto affichait " + eur(VF.solde_qonto) + " contre " + eur(VF.solde_arrete) + " à l'arrêté. " + esc(VF.ecart) + (VF.rapprochees ? " " + VF.rapprochees + " factures rapprochées et marquées payées dans Qonto." : "") + "</div>";
     h += '<div class="afaire">' +
       '<a href="#/justificatifs"><span>Justificatifs manquants</span><strong>' + nb(J.nb || 0) + "</strong><span>" + eur(Math.abs(J.montant || 0)) + " sur 12 mois</span><em>Voir par fournisseur</em></a>" +
       '<a href="#/factures"><span>Factures clients en retard</span><strong>' + nb(retard.length) + "</strong><span>" + eur(sum(retard.map(function (f) { return f.ttc; }))) + " TTC, hors CPF</span><em>Voir les relances</em></a>" +
@@ -315,7 +318,7 @@
     var cur = (D.kpis || []).find(function (k) { return /^Trésorerie fin .* \(e\)$/.test(k.label) && k.label.indexOf("décembre") < 0; }) || {};
     var treso = trouver("TRÉSORERIE EN FIN DE MOIS"), moisT = IX.m.map(function (m) { return m.key; }).filter(function (k) { return k >= addM(IX.cur, -11) && k <= IX.cur; });
     h += '<div class="grille g4">' +
-      carte("Solde Qonto", eur(kpi("Solde Qonto").value), "au " + esc(dLong(D.meta.arrete)), treso ? Charts.spark(moisT.map(function (k) { return treso.v[k]; }), "#4f46e5", 120, 26) : "") +
+      carte("Solde Qonto", eur(kpi("Solde Qonto").value), "au " + esc(dLong(D.meta.arrete)) + " au soir · bouge en journée : l'app Qonto a toujours quelques heures d'avance", treso ? Charts.spark(moisT.map(function (k) { return treso.v[k]; }), "#4f46e5", 120, 26) : "") +
       carte(cur.label ? cur.label.replace("Trésorerie fin ", "Fin ").replace(" (e)", "") + " (e)" : "Fin du mois (e)", eur(cur.value), "réalisé au jour + reste du mois estimé", "", true) +
       carte("Point bas prévu (e)", eur(pb), esc((top.a_pb || {}).extra || "") + ", plancher " + eur(pl), '<div style="margin-top:8px"><span class="chip ' + (ok ? "ok" : "ko") + '">' + (ok ? "Au-dessus du plancher" : "Sous le plancher") + "</span></div>", true) +
       carte("Fin 2026 et fin 2027 (e)", eur(kpi("Trésorerie fin décembre 2026").value), "fin 2027 : " + eur(kpi("Trésorerie fin décembre 2027").value), "", true) + "</div>";
@@ -331,6 +334,21 @@
       var pr = dg.qonto.principaux || [];
       h += '<div class="carte section"><h2>Depuis le ' + esc(dLong(dg.depuis)) + "</h2><div class=\"grille g3\"><div><h3>Encaissements notables</h3>" + mvt(pr.filter(function (x) { return x.montant > 0; })) + "</div><div><h3>Décaissements notables</h3>" + mvt(pr.filter(function (x) { return x.montant < 0; })) + "</div><div><h3>Équipe (Slack)</h3>" + equipe() + "</div></div></div>";
     }
+    // paie (Malibou), CPF (Wedof) et ventes signées
+    var BD = D.bd || {}, paieM = agrPaie(BD.paie), cpf = agrWedof(BD.wedof), vm = ventesMois();
+    if (paieM.mois.length || cpf || vm) {
+      h += '<div class="grille g3 section">';
+      if (paieM.mois.length) h += '<div class="carte"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Paie (Malibou)</h2><a class="small" href="#/classeur?o=bdp">Le détail</a></div><div id="ch-paie"></div><p class="muted small" style="margin:6px 0 0">Coût employeur total par mois de paie' + (complet() ? ", détail nominatif dans le classeur." : ", détail par poste dans le classeur.") + "</p></div>";
+      if (cpf) h += '<div class="carte"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">CPF (Wedof)</h2><a class="small" href="#/classeur?o=bdw">Les dossiers</a></div><div id="ch-cpf"></div><p class="muted small" style="margin:6px 0 0">' + nb(cpf.payes_90_nb) + " dossiers payés par la CDC sur 90 jours (" + eur(cpf.payes_90) + ").</p></div>";
+      if (vm) h += '<div class="carte"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Ventes signées</h2><a class="small" href="#/classeur?o=commercial">L\'onglet Commercial</a></div><div id="ch-ventes"></div><p class="muted small" style="margin:6px 0 0">CA signé mensuel ; la part CPF alimente la trésorerie via Bibby.</p></div>';
+      h += "</div>";
+    }
+    // tous les chiffres clés du classeur (onglet À retenir)
+    h += '<div class="carte section"><h2>Chiffres clés du classeur</h2><table class="liste-t"><thead><tr><th>Indicateur</th><th class="r">Valeur</th><th class="r">Repère</th><th>Lecture</th></tr></thead><tbody>';
+    (D.kpis || []).forEach(function (k) {
+      h += '<tr><td>' + esc(k.label) + '</td><td class="r' + (k.est ? " est" : "") + '">' + kVal(k.label, k.value) + '</td><td class="r muted">' + kVal(k.label, k.repere) + '</td><td class="small muted" style="white-space:normal;max-width:420px">' + esc(k.note || "") + "</td></tr>";
+    });
+    h += "</tbody></table></div>";
     v.innerHTML = h;
     // trésorerie : réel + prévision, BP de référence, plan, plancher
     var ref = (D.bp_ref || {}).treso || {}, refRow = treso ? ref[treso.id] : null, split = mois.findIndex(function (k) { return IX.st[k] !== "Réalisé"; });
@@ -354,6 +372,44 @@
     var col = { mois: plage() };
     var items = rubs.map(function (r) { return { label: r.label, value: -(valeur(r, col) || 0), row: r }; }).filter(function (x) { return x.value > 0; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 9);
     Charts.hbars($("ch-rub"), { items: items, color: "#eb6834", onClick: function (it) { ST.ouverts[it.row.id] = true; ST.sel = it.row.id; aller("tresorerie"); } });
+    if ($("ch-paie")) Charts.bars($("ch-paie"), { labels: paieM.mois.map(mLab), series: [{ name: "Coût employeur", values: paieM.couts, color: "#4f46e5" }], height: 170,
+      extraRows: function (i) { return [{ name: "salariés payés", value: paieM.n[i], color: "transparent", fmt: function (x) { return nb(x); } }]; },
+      onClick: function () { location.hash = "#/classeur?o=bdp"; } });
+    if ($("ch-cpf") && cpf) Charts.hbars($("ch-cpf"), { items: cpf.items, color: "#2a78d6", fmt: function (x) { return Charts.eur(x); }, onClick: function () { location.hash = "#/classeur?o=bdw"; } });
+    if ($("ch-ventes") && vm) Charts.bars($("ch-ventes"), { labels: vm.mois.map(mLab), series: [{ name: "Ventes signées", values: vm.tot, color: "#2a78d6" }, { name: "dont CPF", values: vm.cpf, color: "#94a3b8" }], height: 170 });
+  }
+  function kVal(label, v) {
+    if (v == null) return "";
+    if (typeof v !== "number") return esc(v);
+    if (/part|taux|quotité|marge d/i.test(label) && Math.abs(v) <= 1) return pct(v, 0);
+    if (Math.abs(v) < 400 && v === Math.round(v)) return nb(v);
+    return eur(v);
+  }
+  function agrPaie(paie) {
+    var par = {}, nset = {};
+    (paie || []).forEach(function (r) { par[r.mois] = (par[r.mois] || 0) + (r.cout || 0); nset[r.mois] = (nset[r.mois] || 0) + (typeof r.n === "number" ? r.n : 1); });
+    var mois = Object.keys(par).sort();
+    return { mois: mois, couts: mois.map(function (k) { return par[k]; }), n: mois.map(function (k) { return nset[k]; }) };
+  }
+  function agrWedof(wed) {
+    if (!wed || !wed.length) return null;
+    var b = { att: { label: "Facturé, en attente CDC", value: 0, sub: 0 }, sf: { label: "Service fait, à facturer", value: 0, sub: 0 }, acc: { label: "Accepté, session à venir ou en cours", value: 0, sub: 0 } };
+    var p90 = 0, p90n = 0, lim = addM(IX.cur, -3) + "-01";
+    wed.forEach(function (d) {
+      var m = d.montant || 0;
+      if (d.paye_le) { if (d.paye_le >= lim) { p90 += m; p90n++; } return; }
+      if (/cancel|refus|aband/i.test(d.etat || "")) return;
+      if (d.facture_le) { b.att.value += m; b.att.sub++; }
+      else if (d.service_fait) { b.sf.value += m; b.sf.sub++; }
+      else if (d.acceptation) { b.acc.value += m; b.acc.sub++; }
+    });
+    return { items: [b.att, b.sf, b.acc].map(function (x) { return { label: x.label, value: x.value, sub: x.sub + " dossier" + (x.sub > 1 ? "s" : "") }; }), payes_90: p90, payes_90_nb: p90n };
+  }
+  function ventesMois() {
+    var c = (DATA.sheets || {}).commercial || [], tot = c.find(function (r) { return r.label.indexOf("Ventes signées (€)") === 0; }), cpf = c.find(function (r) { return r.label.indexOf("dont CPF") === 0; });
+    if (!tot) return null;
+    var mois = IX.m.map(function (m) { return m.key; }).filter(function (k) { return k >= addM(IX.cur, -11) && k <= IX.cur; });
+    return { mois: mois, tot: mois.map(function (k) { return tot.v[k]; }), cpf: mois.map(function (k) { return cpf ? cpf.v[k] : null; }) };
   }
   function liste(arr) { return arr && arr.length ? '<ul class="liste">' + arr.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : '<p class="muted small">Rien à signaler.</p>'; }
   function mvt(arr) { return arr && arr.length ? '<ul class="liste small">' + arr.slice(0, 6).map(function (x) { return "<li>" + esc(dCourt(x.date)) + " " + esc(x.libelle) + " : <strong class=\"num\">" + eur(x.montant) + "</strong></li>"; }).join("") + "</ul>" : '<p class="muted small">Aucun.</p>'; }
@@ -453,6 +509,91 @@
       return;
     }
     ouvrirTiroir(row.label, sous, h);
+  }
+
+  // ------------------------------------------------------------------ RAPPROCHEMENT (factures x encaissements x Wedof)
+  function nkey(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  function nnom(s) { return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
+  var LOTS = /^(bibby|stripe|alma|gocardless|qonto|sumup|paypal)/i;
+  function rapprocher() {
+    var credits = IX.tx.filter(function (t) { return t.mt > 0 && /^(CPF|OPCO|Entreprises|Particuliers)/.test(t.rub || ""); })
+      .map(function (t) { return Object.assign({ k: nkey(t.ref || "") + "|" + nkey(t.lib || ""), n: nnom(t.cp) }, t); });
+    var wedFac = {};
+    (((DATA.bd || {}).wedof) || []).forEach(function (d) {
+      if (!d.facture) return;
+      var k = nkey(d.facture), w = wedFac[k] || (wedFac[k] = { n: 0, payes: 0, paye_le: "", mt: 0 });
+      w.n++; w.mt += d.montant || 0;
+      if (d.paye_le) { w.payes++; if (d.paye_le > w.paye_le) w.paye_le = d.paye_le; }
+    });
+    var apointer = [], cdc = [], used = {};
+    IX.fac.filter(function (f) { return f.statut === "unpaid"; }).forEach(function (f) {
+      var k = nkey(f.numero), cn = nnom(f.client);
+      if (f.payeur === "CPF") {
+        var w = k && wedFac[k];
+        if (w && w.n && w.payes === w.n) cdc.push({ f: f, w: w });
+        return;
+      }
+      var hit = null, mode = "";
+      for (var i = 0; i < credits.length; i++) {
+        var c = credits[i];
+        if (used[c.id]) continue;
+        if (k && c.k.indexOf(k) >= 0 && Math.abs(c.mt - f.ttc) < 0.01) { hit = c; mode = "référence de virement"; break; }
+      }
+      if (!hit && cn) {
+        var cands = credits.filter(function (c) { return !used[c.id] && Math.abs(c.mt - f.ttc) < 0.01 && c.date >= f.date && (c.n.indexOf(cn) >= 0 || cn.indexOf(c.n) >= 0); });
+        if (cands.length === 1) { hit = cands[0]; mode = "client et montant"; }
+      }
+      if (hit) { used[hit.id] = 1; apointer.push({ f: f, c: hit, mode: mode }); }
+    });
+    // encaissements clients sans facture identifiable (hors lots connus)
+    var numsAll = {}; IX.fac.forEach(function (f) { if (f.numero) numsAll[nkey(f.numero)] = 1; });
+    var sans = [], lots = { n: 0, m: 0 };
+    credits.forEach(function (c) {
+      if (used[c.id]) return;
+      if (LOTS.test(c.cp || "")) { lots.n++; lots.m += c.mt; return; }
+      var found = false;
+      for (var k2 in numsAll) { if (k2 && c.k.indexOf(k2) >= 0) { found = true; break; } }
+      if (!found) found = IX.fac.some(function (f) { return Math.abs(f.ttc - c.mt) < 0.01 && (nnom(f.client).indexOf(c.n) >= 0 || c.n.indexOf(nnom(f.client)) >= 0); });
+      if (!found) sans.push(c);
+    });
+    sans.sort(function (a, b) { return b.mt - a.mt; });
+    return { apointer: apointer, cdc: cdc, sans: sans, lots: lots };
+  }
+  function vueRapprochement(v) {
+    var h = '<div class="entete"><div><h1 class="page">Rapprochement</h1><p class="contrat">Croise les encaissements Qonto, les factures émises et les paiements CDC (Wedof) pour trouver ce qui n\'est pas pointé : factures encore « impayées » dont le règlement est arrivé, et encaissements sans facture en face.</p></div></div>';
+    if (!complet()) h += '<div class="bandeau info">Vue équipe : les noms de particuliers sont masqués ; le rapprochement par numéro de facture et le croisement CPF restent complets. Le détail nominatif est dans l\'accès complet.</div>';
+    var R = rapprocher(), VF = DATA.meta.verifie;
+    if (VF && VF.rapprochees) h += '<div class="bandeau info">Le ' + esc(dLong(VF.le)) + " : " + VF.rapprochees + " factures ont été rapprochées et marquées payées directement dans Qonto (LHH F-2026-0764, cbcréations F-2026-0888).</div>";
+    h += '<div class="grille g3">' +
+      carte("Règlement reçu, facture à pointer", nb(R.apointer.length), eur(sum(R.apointer.map(function (x) { return x.f.ttc; }))) + " : à marquer payées dans Qonto") +
+      carte("CPF payé par la CDC, facture à pointer", nb(R.cdc.length), eur(sum(R.cdc.map(function (x) { return x.f.ttc; }))) + " : la CDC a réglé tous les dossiers (Wedof)") +
+      carte("Encaissements sans facture en face", nb(R.sans.length), eur(sum(R.sans.map(function (x) { return x.mt; }))) + " hors lots (Bibby, Stripe, Alma : " + nb(R.lots.n) + " lots, " + eur(R.lots.m) + ", normaux)") + "</div>";
+    h += '<div class="carte section"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Factures dont le règlement semble reçu</h2>' + (R.apointer.length ? '<button class="btn" type="button" id="copier-rap">Copier la liste</button>' : "") + "</div>";
+    if (R.apointer.length) {
+      h += '<table class="liste-t"><thead><tr><th>Facture</th><th>Client</th><th class="r">TTC</th><th>Encaissement trouvé</th><th>Rapprochement</th><th></th></tr></thead><tbody>';
+      R.apointer.forEach(function (x) { h += '<tr class="rapp-ok"><td class="num">' + esc(x.f.numero) + '</td><td><span class="cp">' + esc(x.f.client) + '</span></td><td class="r">' + eur2(x.f.ttc) + '</td><td class="small">' + dCourt(x.c.date) + " · " + esc(x.c.cp) + " · " + eur2(x.c.mt) + '</td><td><span class="chip ok">' + esc(x.mode) + "</span></td><td>" + aQonto(lienFac(x.f.id), "Pointer dans Qonto") + " " + aQonto(lienTx(x.c.id), "Virement") + "</td></tr>"; });
+      h += "</tbody></table>";
+    } else h += '<p class="vide">Rien à pointer : toutes les factures impayées sont réellement en attente de règlement.</p>';
+    h += "</div>";
+    h += '<div class="carte section"><h2>Factures CPF réglées par la CDC (Wedof) encore « impayées » dans Qonto</h2>';
+    if (R.cdc.length) {
+      h += '<table class="liste-t"><thead><tr><th>Facture</th><th class="r">TTC</th><th>Dossiers</th><th>Payé CDC le</th><th></th></tr></thead><tbody>';
+      R.cdc.forEach(function (x) { h += '<tr class="rapp-ok"><td class="num">' + esc(x.f.numero) + '</td><td class="r">' + eur2(x.f.ttc) + "</td><td>" + x.w.n + " dossier" + (x.w.n > 1 ? "s" : "") + ", " + eur(x.w.mt) + '</td><td class="num">' + dCourt(x.w.paye_le) + "</td><td>" + aQonto(lienFac(x.f.id), "Pointer dans Qonto") + "</td></tr>"; });
+      h += "</tbody></table><p class=\"muted small\">L'argent arrive via Bibby (factures cédées) : la facture est soldée même si aucun virement CDC n'apparaît dans Qonto.</p>";
+    } else h += '<p class="vide">Aucune : les factures CPF impayées correspondent bien à l\'encours facturé en attente CDC (' + eur(sum(IX.fac.filter(function (f) { return f.statut === "unpaid" && f.payeur === "CPF"; }).map(function (f) { return f.ttc; }))) + ").</p>";
+    h += "</div>";
+    h += '<div class="carte section"><h2>Encaissements clients sans facture Qonto en face</h2>';
+    if (R.sans.length) {
+      h += '<p class="muted small">Soit la facture a été émise hors Qonto, soit elle reste à créer : à vérifier un par un.</p><table class="liste-t"><thead><tr><th>Date</th><th>Contrepartie</th><th class="r">Montant</th><th>Rubrique</th><th></th></tr></thead><tbody>';
+      R.sans.slice(0, 60).forEach(function (c) { h += '<tr class="rapp-warn"><td class="num">' + dCourt(c.date) + '</td><td><span class="cp">' + esc(c.cp) + "</span>" + (c.lib ? '<span class="sous">' + esc(c.lib) + "</span>" : "") + '</td><td class="r pos">' + eur2(c.mt) + '</td><td class="small muted">' + esc(c.rub) + "</td><td>" + aQonto(lienTx(c.id), "Qonto") + "</td></tr>"; });
+      h += "</tbody></table>";
+    } else h += '<p class="vide">Tous les encaissements clients ont une facture identifiable (hors lots Bibby, Stripe et Alma, qui règlent plusieurs factures à la fois).</p>';
+    h += "</div>";
+    v.innerHTML = h;
+    if ($("copier-rap")) $("copier-rap").addEventListener("click", function () {
+      var t = R.apointer.map(function (x) { return x.f.numero + " ; " + x.f.client + " ; " + Charts.eur(x.f.ttc) + " ; réglé le " + dCourt(x.c.date) + " par " + x.c.cp; }).join("\n");
+      navigator.clipboard.writeText(t).then(function () { toast("Liste copiée."); }, function () { toast("Copie impossible dans ce navigateur."); });
+    });
   }
 
   // ------------------------------------------------------------------ TRANSACTIONS
@@ -663,14 +804,131 @@
     v.innerHTML = h; brancherGran(v);
     v.querySelectorAll("[data-o]").forEach(function (b) { b.addEventListener("click", function () { ST.bpOnglet = b.dataset.o; afficher(); }); });
   }
-  function vueBilan(v) {
-    var B = DATA.bilan, h = '<div class="entete"><div><h1 class="page">Bilan</h1><p class="contrat">Liasse au 31/12/2025, puis bilan de gestion reconstitué à la fin du dernier mois réalisé, à fin 2026 et fin 2027 (estimés).</p></div></div>';
-    h += '<div class="tab-wrap libre"><table class="t"><thead><tr><th>Poste</th>' + B.cols.map(function (c, i) { return '<th class="' + (i >= 2 ? "est" : "") + '">' + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
+  function bilanTable() {
+    var B = DATA.bilan, h = '<div class="tab-wrap libre"><table class="t"><thead><tr><th>Poste</th>' + B.cols.map(function (c, i) { return '<th class="' + (i >= 2 ? "est" : "") + '">' + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
     B.rows.forEach(function (r) {
       if (r.v.every(function (x) { return x == null; })) { h += '<tr class="band"><td colspan="5">' + esc(r.label) + "</td></tr>"; return; }
       h += '<tr class="' + (r.bold ? "total" : "") + '"><td title="' + esc(r.note || "") + '">' + esc(r.label) + "</td>" + r.v.map(function (x, i) { return '<td class="' + (i >= 2 ? "est" : "") + '">' + (typeof x === "number" ? eur(x) : esc(x || "")) + "</td>"; }).join("") + "</tr>";
     });
-    v.innerHTML = h + "</tbody></table></div>";
+    return h + "</tbody></table></div>";
+  }
+  function vueBilan(v) {
+    v.innerHTML = '<div class="entete"><div><h1 class="page">Bilan</h1><p class="contrat">Liasse au 31/12/2025, puis bilan de gestion reconstitué à la fin du dernier mois réalisé, à fin 2026 et fin 2027 (estimés).</p></div></div>' + bilanTable();
+  }
+
+  // ------------------------------------------------------------------ CLASSEUR : la vision Excel, onglet par onglet
+  var ONGLETS = [["retenir", "À retenir"], ["pilotage", "Pilotage"], ["synthese", "Synthèse"], ["treso", "Trésorerie"], ["cr", "Compte de résultat"], ["bilan", "Bilan"],
+                 ["commercial", "Commercial"], ["bp", "BP"], ["hypotheses", "Hypothèses"], ["sep", ""],
+                 ["bdq", "BD Qonto"], ["bdf", "BD Factures"], ["bdw", "BD Wedof"], ["bdb", "BD Bibby"], ["bdp", "BD Paie"], ["bdv", "BD Ventes"]];
+  function tableLibre(cols, rows, opts) {
+    opts = opts || {};
+    var q = (ST.xq || "").toLowerCase(), max = ST.xn || 250, aff = rows;
+    if (q) aff = rows.filter(function (r) { return r.join(" ").toLowerCase().indexOf(q) >= 0; });
+    var h = '<div class="outils"><input class="champ" id="x-q" type="search" placeholder="Filtrer (' + rows.length + ' lignes)" value="' + esc(ST.xq || "") + '" style="max-width:260px">' +
+      '<span class="chip cat">' + aff.length + " ligne" + (aff.length > 1 ? "s" : "") + "</span>" + (opts.outils || "") + "</div>";
+    h += '<div class="tab-wrap libre"><table class="liste-t"><thead><tr>' + cols.map(function (c) { return "<th" + (c[1] === "r" ? ' class="r"' : "") + ">" + esc(c[0]) + "</th>"; }).join("") + "</tr></thead><tbody>";
+    aff.slice(0, max).forEach(function (r, i) {
+      h += "<tr" + (opts.attr ? " " + opts.attr(r, i) : "") + ">" + r.map(function (x, j) {
+        var c = cols[j], val = c[1] === "r" ? (typeof x === "number" ? eur2(x) : esc(x == null ? "" : x)) : esc(x == null ? "" : x);
+        return '<td class="' + (c[1] === "r" ? "r" : c[1] === "n" ? "num" : "") + '">' + val + "</td>";
+      }).join("") + "</tr>";
+    });
+    h += "</tbody></table>" + (!aff.length ? '<p class="vide">Aucune ligne pour ce filtre.</p>' : "") + "</div>";
+    if (aff.length > max) h += '<div class="outils" style="margin-top:10px"><button class="btn" type="button" id="x-plus">Afficher 500 de plus</button><span class="muted small">' + max + " sur " + aff.length + "</span></div>";
+    return h;
+  }
+  function brancherLibre(v) {
+    var fq = $("x-q");
+    if (fq) fq.addEventListener("input", function () { clearTimeout(fq.h); fq.h = setTimeout(function () { ST.xq = fq.value; ST.xn = 250; afficher(); var n = $("x-q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); });
+    if ($("x-plus")) $("x-plus").addEventListener("click", function () { ST.xn = (ST.xn || 250) + 500; afficher(); });
+  }
+  function grilleTreso(cols) {
+    var h = '<div class="tab-wrap" id="grille"><table class="t"><thead><tr><th>Rubrique</th>' + cols.map(function (c) { return '<th class="' + (c.est ? "est" : "") + '">' + esc(c.lab) + "</th>"; }).join("") + "</tr></thead><tbody>";
+    IX.rows.forEach(function (r) {
+      if (r.label && r.label.toLowerCase().indexOf("contrôle") === 0) return;
+      if (r.t === "band") { h += '<tr class="band"><td>' + esc(r.label) + '</td><td colspan="' + cols.length + '"></td></tr>'; return; }
+      var cls = r.t === "total" ? "total" : "l" + r.lvl;
+      h += '<tr class="' + cls + '"><td><span style="padding-left:' + ((r.lvl || 1) - 1) * 14 + 'px">' + esc(r.label) + "</span></td>";
+      cols.forEach(function (c, ci) {
+        var val = valeur(r, c), cl = val != null && val !== 0 ? " cl" : "";
+        h += '<td class="' + (c.est ? "est" : "") + cl + '" data-c="' + ci + '" data-r="' + esc(r.id) + '">' + (val == null ? "" : eur(val)) + "</td>";
+      });
+      h += "</tr>";
+    });
+    return h + "</tbody></table></div>";
+  }
+  function vueClasseur(v) {
+    var q = (location.hash.split("?")[1] || ""), m = /(?:^|&)o=([a-z]+)/.exec(q);
+    if (m && m[1] !== ST.xo) { ST.xo = m[1]; ST.xq = ""; ST.xn = 250; }
+    if (!ST.xo || ST.xo === "sep") ST.xo = "retenir";
+    var o = ST.xo, D = DATA, h = "";
+    h += '<div class="entete"><div><h1 class="page">Classeur</h1><p class="contrat">La même vision que l\'Excel « ' + esc((D.meta.classeur || "").replace(".xlsx", "")) + ' », onglet par onglet. Chaque chiffre vient d\'une cellule calculée du classeur de cette nuit.</p></div></div>';
+    h += '<div class="xtabs" role="tablist">' + ONGLETS.map(function (x) {
+      if (x[0] === "sep") return '<span class="bd-sep" aria-hidden="true"></span>';
+      if (x[0] === "bdp" && !(D.bd && D.bd.paie && D.bd.paie.length)) return "";
+      return '<button type="button" role="tab" data-xo="' + x[0] + '" aria-pressed="' + (o === x[0]) + '">' + esc(x[1]) + "</button>";
+    }).join("") + "</div>";
+    var gran = '<div class="outils">' + segGran() + "</div>";
+    if (o === "retenir") {
+      var T = D.textes || {};
+      h += '<div class="carte"><h2>Chiffres clés</h2><table class="liste-t"><thead><tr><th>Indicateur</th><th class="r">Valeur</th><th class="r">Repère</th><th>Lecture</th></tr></thead><tbody>' +
+        (D.kpis || []).map(function (k) { return '<tr><td>' + esc(k.label) + '</td><td class="r' + (k.est ? " est" : "") + '">' + kVal(k.label, k.value) + '</td><td class="r muted">' + kVal(k.label, k.repere) + '</td><td class="small muted" style="white-space:normal;max-width:440px">' + esc(k.note || "") + "</td></tr>"; }).join("") + "</tbody></table></div>";
+      h += '<div class="grille g2 section"><div class="carte"><h2>Interprétation</h2>' + liste(T.interpretation) + '</div><div class="carte"><h2>Points à trancher ou à vérifier</h2>' + liste(T.points) + "</div></div>";
+      if (T.methode) h += '<div class="carte section"><h2>Hypothèses et méthode</h2>' + liste(T.methode) + "</div>";
+    } else if (o === "pilotage") {
+      h += '<div class="bandeau info">L\'onglet Pilotage se simule en direct dans <a href="#/pilotage">Pilotage et plan</a> (mêmes formules que le classeur). Ci-dessous, les paramètres tels qu\'ils sont dans l\'Excel.</div>';
+      h += '<div class="carte"><h2>Paramètres (section B du Pilotage)</h2><table class="liste-t"><thead><tr><th>Paramètre</th><th class="r">Retenu</th><th class="r">Mesuré</th><th class="r">Défaut</th><th>Source</th></tr></thead><tbody>' +
+        ((D.pilotage || {}).params || []).map(function (p) { return '<tr><td>' + (p.input ? '<span class="saisie" title="Saisie modifiable"></span>' : "") + esc(p.label) + (p.unit ? ' <span class="muted small">(' + esc(p.unit) + ")</span>" : "") + '</td><td class="r">' + parNf(p.retenu, p.nf) + '</td><td class="r muted">' + (p.mesure == null ? "" : parNf(p.mesure, p.nf)) + '</td><td class="r muted">' + (p.defaut == null ? "" : parNf(p.defaut, p.nf)) + '</td><td class="small muted" style="white-space:normal;max-width:380px">' + esc(p.src || "") + "</td></tr>"; }).join("") + "</tbody></table></div>";
+    } else if (o === "synthese" || o === "cr" || o === "commercial" || o === "bp") {
+      h += gran + grille(D.sheets[o] || [], "Ligne");
+    } else if (o === "treso") {
+      h += gran + grilleTreso(colonnes(plage()));
+    } else if (o === "bilan") {
+      h += bilanTable();
+    } else if (o === "hypotheses") {
+      h += '<p class="muted small"><span class="saisie"></span>Cellule bleue = saisie d\'Olivier dans le classeur (reprise chaque nuit). Tout le classeur se recalcule à partir de ces valeurs.</p>';
+      h += '<div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Paramètre</th><th class="r">Valeur</th><th>Commentaire</th></tr></thead><tbody>';
+      (D.hypotheses || []).forEach(function (r) {
+        if (r.t === "band") { h += '<tr class="band"><td colspan="3">' + esc(r.label) + "</td></tr>"; return; }
+        h += '<tr><td>' + (r.bleu ? '<span class="saisie" title="Saisie modifiable"></span>' : "") + esc(r.label) + '</td><td class="r">' + (typeof r.v === "number" ? parNf(r.v, r.nf) : esc(r.v == null ? "" : r.v)) + '</td><td class="small muted" style="white-space:normal;max-width:460px">' + esc(r.note || "") + "</td></tr>";
+      });
+      h += "</tbody></table></div>";
+    } else if (o === "bdq") {
+      h += tableLibre([["Date", "n"], ["Montant", "r"], ["Contrepartie"], ["Libellé"], ["Rubrique"], ["Sous-rubrique"], ["Détail"], ["Pôle"], ["Justif."]],
+        IX.tx.map(function (t) { return [dCourt(t.date), t.mt, t.cp, t.lib, t.rub, t.sr, t.det, t.pole, t.mt < 0 ? (t.j ? "oui" : "manquant") : ""]; }));
+    } else if (o === "bdf") {
+      h += tableLibre([["Numéro", "n"], ["Émise", "n"], ["Échéance", "n"], ["Statut"], ["Payée le", "n"], ["TTC", "r"], ["HT", "r"], ["Payeur"], ["Segment"], ["Client"], ["Intitulé"]],
+        IX.fac.map(function (f) { return [f.numero, dCourt(f.date), dCourt(f.echeance), f.statut === "paid" ? "payée" : f.statut === "canceled" ? "annulée" : "impayée", dCourt(f.paye_le), f.ttc, f.ht, f.payeur, f.segment, f.client, f.intitule]; }));
+    } else if (o === "bdw") {
+      var W = (D.bd || {}).wedof || [];
+      h += tableLibre([["Dossier", "n"], ["État"], ["Facturation"], ["Montant", "r"], ["Facture", "n"], ["Accepté", "n"], ["Début", "n"], ["Fin", "n"], ["Service fait", "n"], ["Facturé le", "n"], ["Payé le (CDC)", "n"], ["Ville"]],
+        W.map(function (d) { return [d.dossier, d.etat, d.facturation, d.montant, d.facture, dCourt(d.acceptation), dCourt(d.debut), dCourt(d.fin), dCourt(d.service_fait), dCourt(d.facture_le), dCourt(d.paye_le), d.ville]; }));
+    } else if (o === "bdb") {
+      var B2 = (D.bd || {}).bibby || {};
+      h += '<div class="grille g2"><div class="carte"><h2>Synthèse du portail' + (B2.date ? " au " + esc(dLong(B2.date)) : "") + '</h2><table class="liste-t"><tbody>' +
+        (B2.synthese || []).map(function (s) { return "<tr><td>" + esc(s.label) + '</td><td class="r">' + eur2(s.v) + "</td></tr>"; }).join("") + '</tbody></table><p class="muted small">Lecture du portail Bibby en séance avec Olivier ; mise à jour à chaque lecture.</p></div>' +
+        '<div class="carte"><h2>Mouvements de l\'encours</h2><table class="liste-t"><thead><tr><th>Date</th><th>Type</th><th class="r">Débit</th><th class="r">Crédit</th></tr></thead><tbody>' +
+        ((B2.encours || []).slice(-30).reverse().map(function (r) { return "<tr><td class=\"num\">" + dCourt(r.date) + "</td><td>" + esc(r.type || r.libelle || "") + '</td><td class="r">' + eur2(parseFloat(r.debit) || null) + '</td><td class="r">' + eur2(parseFloat(r.credit) || null) + "</td></tr>"; }).join("")) + "</tbody></table></div></div>";
+      h += '<div class="carte section"><h2>Compte courant Bibby</h2><div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Date</th><th>Type</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th></tr></thead><tbody>' +
+        ((B2.compte_courant || []).slice().reverse().map(function (r) { return "<tr><td class=\"num\">" + dCourt(r.date) + "</td><td>" + esc(r.type || "") + '</td><td class="r">' + eur2(parseFloat(r.debit) || null) + '</td><td class="r">' + eur2(parseFloat(r.credit) || null) + '</td><td class="r">' + eur2(parseFloat(r.solde) || null) + "</td></tr>"; }).join("")) + "</tbody></table></div></div>";
+    } else if (o === "bdp") {
+      var P2 = (D.bd || {}).paie || [];
+      h += tableLibre([["Salarié"], ["Poste"], ["Mois", "n"], ["Brut", "r"], ["Ch. salariales", "r"], ["Ch. patronales", "r"], ["Frais hors brut", "r"], ["Coût total", "r"], ["Net versé", "r"]],
+        P2.map(function (r) { return [r.salarie, r.poste, r.mois, r.brut, r.ch_sal, r.ch_pat, r.frais, r.cout, r.net]; }));
+      if (!complet()) h += '<p class="muted small">Vue équipe : les salaires sont regroupés par poste, sans nom. Le détail nominatif est dans l\'accès complet et dans l\'Excel.</p>';
+    } else if (o === "bdv") {
+      var V2 = (D.bd || {}).ventes || [];
+      h += tableLibre([["Mois", "n"], ["Source"], ["Ventes signées", "r"], ["dont CPF", "r"], ["dont entreprises", "r"], ["dont particuliers", "r"], ["Non renseigné", "r"], ["Nb", "r"]],
+        V2.map(function (r) { return [r.mois, r.source, r.total, r.cpf, r.entreprises, r.particuliers, r.nr, r.nb]; }));
+    }
+    v.innerHTML = h;
+    v.querySelectorAll("[data-xo]").forEach(function (b) { b.addEventListener("click", function () { ST.xo = b.dataset.xo; ST.xq = ""; ST.xn = 250; if (location.hash.indexOf("?") >= 0) history.replaceState(null, "", "#/classeur"); afficher(); }); });
+    brancherLibre(v); brancherGran(v);
+    if (o === "treso") {
+      $("grille").addEventListener("click", function (e) { var td = e.target.closest("td.cl"); if (td) ouvrirCellule(IX.byId[td.dataset.r], colonnes(plage())[+td.dataset.c]); });
+      caler($("grille"), colonnes(plage()));
+    }
+    if (o === "synthese" || o === "cr" || o === "commercial" || o === "bp") caler($("grille"), colonnes(plage()));
   }
 
   // ------------------------------------------------------------------ PILOTAGE ET PLAN
