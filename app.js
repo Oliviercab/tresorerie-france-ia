@@ -62,7 +62,8 @@
     var r = await fichier(niveauComplet ? "complet" : "data", niveauComplet ? "data_complet.enc" : "data.enc");
     if (!r.ok) { if (niveauComplet) return charger(false); throw new Error("Les données ne sont pas encore publiées."); }
     DATA = await Coffre.dechiffrer(niveauComplet ? PRIVC : PRIV, await r.json());
-    indexer(); SIM = null; ST.plan = null;
+    indexer(); SIM = null; ST.plan = null; saisiesInit();
+    document.body.dataset.version = VERSION; majLive();
     $("verrou").classList.add("hidden"); $("appli").classList.remove("hidden");
     $("arrete").textContent = "Données au " + dLong(DATA.meta.arrete);
     var pied = "Reflet du classeur « " + esc(DATA.meta.classeur || "Trésorerie France IA") + " ». Mis à jour chaque nuit (dernière génération le " + esc(DATA.meta.genere_le) + "). Les montants en gris italique sont des prévisions.";
@@ -202,12 +203,22 @@
   }
 
   // ------------------------------------------------------------------ routeur
-  var VUES = { accueil: vueAccueil, pilotage: vuePilotage, budget: vueBudget, tresorerie: vueTresorerie, resultat: vueResultat, bp: vueBP, bilan: vueBilan,
-               classeur: vueClasseur, rapprochement: vueRapprochement,
-               transactions: vueTransactions, factures: vueFactures, justificatifs: vueJustificatifs, economies: vueEconomies };
+  var VERSION = (window.TRESO_CONFIG && window.TRESO_CONFIG.version) || "v5";     // v4 : classeur seul ; v5 : classeur + cockpit
+  var ACCUEIL = VERSION === "v4" ? "retenir" : "cockpit";
+  var VUES = { cockpit: vueCockpit, budget: vueBudget, rapprochement: vueRapprochement,
+               transactions: vueTransactions, factures: vueFactures, justificatifs: vueJustificatifs, economies: vueEconomies,
+               pilotage: vuePilotage, tresorerie: vueTresorerie, bilan: vueBilan };
+  ["retenir", "synthese", "cr", "commercial", "bp", "hypotheses", "bdq", "bdf", "bdw", "bdb", "bdp", "bdv"].forEach(function (o) {
+    VUES[o] = function (v) { vueOnglet(v, o); };
+  });
+  var COCKPIT_VUES = { cockpit: 1, budget: 1, rapprochement: 1, transactions: 1, factures: 1, justificatifs: 1, economies: 1 };
   function route() {
-    var h = (location.hash || "#/accueil").replace(/^#\/?/, "").split("?")[0];
-    ST.vue = VUES[h] ? h : "accueil";
+    var h = (location.hash || "#/" + ACCUEIL).replace(/^#\/?/, "").split("?")[0];
+    if (h === "accueil") h = ACCUEIL;
+    if (h === "classeur") { var mq = /(?:^|[?&])o=([a-z]+)/.exec(location.hash.split("?")[1] || ""); h = mq ? (mq[1] === "treso" ? "tresorerie" : mq[1]) : "retenir"; }
+    if (h === "resultat") h = "cr";
+    if (VERSION === "v4" && COCKPIT_VUES[h]) { h = ACCUEIL; try { history.replaceState(null, "", "#/" + h); } catch (e) {} }
+    ST.vue = VUES[h] ? h : ACCUEIL;
     document.querySelectorAll(".nav a").forEach(function (a) { if (a.dataset.v === ST.vue) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     $("nav").classList.remove("ouvert"); $("voile").classList.add("hidden");
     afficher(); window.scrollTo(0, 0);
@@ -234,7 +245,7 @@
   function fermerTiroir() { $("tiroir").classList.remove("ouvert"); $("tiroir").setAttribute("aria-hidden", "true"); }
   $("tiroir-x").addEventListener("click", fermerTiroir);
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { fermerTiroir(); fermerRecherche(); }
+    if (e.key === "Escape") { fermerTiroir(); fermerRecherche(); document.body.classList.remove("pres"); }
     if (e.key === "/" && document.activeElement && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && DATA) { e.preventDefault(); $("q").focus(); }
   });
   function listeTx(txs, opts) {
@@ -303,10 +314,10 @@
   // ------------------------------------------------------------------ ACCUEIL
   function kpi(lab) { var k = (DATA.kpis || []).find(function (x) { return x.label.indexOf(lab) === 0; }); return k || {}; }
   function carte(lab, val, sub, extra, est) { return '<div class="carte kpi"><div class="lab">' + esc(lab) + '</div><div class="val' + (est ? " est" : "") + '">' + val + "</div>" + (sub ? '<div class="sub">' + sub + "</div>" : "") + (extra || "") + "</div>"; }
-  function vueAccueil(v) {
+  function vueCockpit(v) {
     var D = DATA, A = D.analyses || {}, J = A.justificatifs || {}, top = (D.pilotage || {}).top || {}, h = "";
     var retard = IX.fac.filter(function (f) { return f.statut === "unpaid" && f.payeur !== "CPF" && f.echeance && f.echeance < D.meta.arrete; });
-    h += '<div class="entete"><div><h1 class="page">À retenir</h1><p class="contrat">Le résumé du classeur, en graphiques : trésorerie, activité, paie, CPF, et ce qui demande votre attention. Données arrêtées au ' + esc(dLong(D.meta.arrete)) + ". Pour la vision cellule par cellule : <a href=\"#/classeur\">le classeur, onglet par onglet</a>.</p></div></div>";
+    h += '<div class="entete"><div><h1 class="page">Cockpit</h1><p class="contrat">Le résumé du classeur, en graphiques : trésorerie et plancher, activité, paie, CPF, et ce qui demande votre attention. Données arrêtées au ' + esc(dLong(D.meta.arrete)) + '. La vision cellule par cellule est dans le groupe « Classeur ».</p></div><button class="btn" type="button" id="btn-pres" title="Plein écran, sans menus : pour projeter en comité">Mode présentation</button></div>';
     var VF = D.meta.verifie;
     if (VF) h += '<div class="bandeau info">Vérifié le ' + esc(dLong(VF.le)) + " : Qonto affichait " + eur(VF.solde_qonto) + " contre " + eur(VF.solde_arrete) + " à l'arrêté. " + esc(VF.ecart) + (VF.rapprochees ? " " + VF.rapprochees + " factures rapprochées et marquées payées dans Qonto." : "") + "</div>";
     h += '<div class="afaire">' +
@@ -334,6 +345,7 @@
       var pr = dg.qonto.principaux || [];
       h += '<div class="carte section"><h2>Depuis le ' + esc(dLong(dg.depuis)) + "</h2><div class=\"grille g3\"><div><h3>Encaissements notables</h3>" + mvt(pr.filter(function (x) { return x.montant > 0; })) + "</div><div><h3>Décaissements notables</h3>" + mvt(pr.filter(function (x) { return x.montant < 0; })) + "</div><div><h3>Équipe (Slack)</h3>" + equipe() + "</div></div></div>";
     }
+    h += '<div class="carte section"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Chiffre d\'affaires et EBITDA</h2><div class="legende"><span><i class="blk" style="background:#2a78d6"></i>CA facturé</span><span><i class="blk" style="background:#4f46e5"></i>EBITDA</span></div></div><div id="ch-cr"></div></div>';
     // paie (Malibou), CPF (Wedof) et ventes signées
     var BD = D.bd || {}, paieM = agrPaie(BD.paie), cpf = agrWedof(BD.wedof), vm = ventesMois();
     if (paieM.mois.length || cpf || vm) {
@@ -377,6 +389,10 @@
       onClick: function () { location.hash = "#/classeur?o=bdp"; } });
     if ($("ch-cpf") && cpf) Charts.hbars($("ch-cpf"), { items: cpf.items, color: "#2a78d6", fmt: function (x) { return Charts.eur(x); }, onClick: function () { location.hash = "#/classeur?o=bdw"; } });
     if ($("ch-ventes") && vm) Charts.bars($("ch-ventes"), { labels: vm.mois.map(mLab), series: [{ name: "Ventes signées", values: vm.tot, color: "#2a78d6" }, { name: "dont CPF", values: vm.cpf, color: "#94a3b8" }], height: 170 });
+    var crRows = (DATA.sheets || {}).cr || [], caR = crRows.find(function (r) { return /^CHIFFRE D'AFFAIRES FACTURÉ/i.test(r.label); }), ebR = crRows.find(function (r) { return /^EBITDA/i.test(r.label); });
+    var mcr = plage(); if (mcr.length > 24) mcr = mcr.slice(-24);
+    if ($("ch-cr")) Charts.bars($("ch-cr"), { labels: mcr.map(mLab), series: [{ name: "CA facturé", values: mcr.map(function (k) { return caR ? caR.v[k] : null; }), color: "#2a78d6" }, { name: "EBITDA", values: mcr.map(function (k) { return ebR ? ebR.v[k] : null; }), color: "#4f46e5" }], height: 220 });
+    var bp2 = $("btn-pres"); if (bp2) bp2.addEventListener("click", function () { document.body.classList.toggle("pres"); toast(document.body.classList.contains("pres") ? "Mode présentation : touche Échap ou le bouton pour revenir." : "Mode normal."); });
   }
   function kVal(label, v) {
     if (v == null) return "";
@@ -418,7 +434,7 @@
   // ------------------------------------------------------------------ TRÉSORERIE (arbre, drill-down)
   function vueTresorerie(v) {
     var cols = colonnes(plage()), h = "";
-    h += '<div class="entete"><div><h1 class="page">Trésorerie</h1><p class="contrat">Toutes les rubriques, jusqu\'à la ligne. Cliquez un montant pour voir les transactions Qonto qui le composent ; les mois en gris italique sont des prévisions du BP.</p></div></div>';
+    h += '<div class="entete"><div><h1 class="page">Trésorerie</h1><p class="contrat">Toutes les rubriques, jusqu\'à la ligne, comme dans l\'onglet Trésorerie du classeur. Cliquez un montant pour voir les transactions Qonto qui le composent ; les mois en gris italique sont des prévisions du BP.</p></div></div>' + xtabs("treso");
     h += '<div class="outils"><div class="seg" role="group" aria-label="Granularité">' + [["mois", "Mois"], ["trimestre", "Trimestres"], ["annee", "Années"]].map(function (x) { return '<button type="button" data-g="' + x[0] + '" aria-pressed="' + (ST.gran === x[0]) + '">' + x[1] + "</button>"; }).join("") + "</div>" +
       '<button class="btn" type="button" id="tout-ouvrir">Tout déplier</button><button class="btn" type="button" id="tout-fermer">Tout replier</button>' +
       '<input class="champ" id="f-ligne" type="search" placeholder="Filtrer les lignes" style="max-width:240px" value="' + esc(ST.filtreLigne || "") + '">' +
@@ -772,38 +788,22 @@
   }
 
   // ------------------------------------------------------------------ RÉSULTAT, BP, BILAN (grilles)
-  function grille(rows, titreCol) {
+  function grille(rows, titreCol, editable) {
     var cols = colonnes(plage()), h = '<div class="tab-wrap" id="grille"><table class="t"><thead><tr><th>' + esc(titreCol) + "</th>" + cols.map(function (c) { return '<th class="' + (c.est ? "est" : "") + '">' + esc(c.lab) + "</th>"; }).join("") + "</tr></thead><tbody>";
     rows.forEach(function (r) {
       if (r.band) { h += '<tr class="band"><td>' + esc(r.label) + '</td><td colspan="' + cols.length + '"></td></tr>'; return; }
       var cls = /^(total|trésorerie en fin|flux net|ebitda|résultat net|chiffre d'affaires facturé)/i.test(r.label) ? "total" : (r.bold ? "l1" : (r.indent >= 3 ? "l2" : ""));
-      h += '<tr class="' + cls + '"><td>' + esc(r.label) + "</td>" + cols.map(function (c) {
+      h += '<tr class="' + cls + '"><td>' + (editable && r.edit ? '<span class="saisie" title="Ligne de saisie (cellules bleues)"></span>' : "") + esc(r.label) + "</td>" + cols.map(function (c) {
         var vals = c.mois.map(function (k) { return r.v[k]; }).filter(function (x) { return typeof x === "number"; });
         var val = !vals.length ? null : (/fin de mois|en fin de/i.test(r.label) ? vals[vals.length - 1] : (/début de mois/i.test(r.label) ? vals[0] : ((r.nf || "").indexOf("%") >= 0 || /par session|apprenants par|taux|marge d'ebitda|ouverte/i.test(r.label) ? sum(vals) / vals.length : sum(vals))));
+        if (editable && r.edit && c.mois.length === 1) return tdVal(val, r.nf, "bp:" + r.edit + ":" + c.mois[0], c.est ? "est" : "");
         return '<td class="' + (c.est ? "est" : "") + (typeof val === "number" && val < 0 && /ebitda|résultat|flux net/i.test(r.label) ? " neg" : "") + '">' + (val == null ? "" : parNf(val, r.nf)) + "</td>";
       }).join("") + "</tr>";
     });
-    return h + "</tbody></table></div>";
+    return h + "</tbody></table></div>" + (editable ? '<p class="muted small"><span class="saisie"></span>Cellules bleues modifiables en vue « Mois » (volumes de sessions et d\'apprenants Paris) ; les villes se règlent dans le module villes ci-dessous. Alignées chaque nuit sur le réel Deliv\'IA.</p>' : "");
   }
   function segGran() { return '<div class="seg" role="group" aria-label="Granularité">' + [["mois", "Mois"], ["trimestre", "Trimestres"], ["annee", "Années"]].map(function (x) { return '<button type="button" data-g="' + x[0] + '" aria-pressed="' + (ST.gran === x[0]) + '">' + x[1] + "</button>"; }).join("") + "</div>"; }
   function brancherGran(v) { v.querySelectorAll("[data-g]").forEach(function (b) { b.addEventListener("click", function () { ST.gran = b.dataset.g; afficher(); }); }); caler($("grille"), colonnes(plage())); }
-  function vueResultat(v) {
-    var rows = DATA.sheets.cr || [], mois = plage();
-    var ca = rows.find(function (r) { return /^CHIFFRE D'AFFAIRES FACTURÉ/i.test(r.label); }), eb = rows.find(function (r) { return /^EBITDA/i.test(r.label); });
-    var h = '<div class="entete"><div><h1 class="page">Résultat</h1><p class="contrat">Chiffre d\'affaires facturé, charges, EBITDA et résultat, mois par mois ; prévisionnel à partir du mois en cours.</p></div></div>';
-    h += '<div class="carte"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Chiffre d\'affaires et EBITDA</h2><div class="legende"><span><i class="blk" style="background:#2a78d6"></i>CA facturé</span><span><i class="blk" style="background:#4f46e5"></i>EBITDA</span></div></div><div id="ch-cr"></div></div>';
-    h += '<div class="outils section">' + segGran() + "</div>" + grille(rows, "Ligne");
-    v.innerHTML = h; brancherGran(v);
-    var mm = mois.length > 24 ? mois.slice(-24) : mois;
-    Charts.bars($("ch-cr"), { labels: mm.map(mLab), series: [{ name: "CA facturé", values: mm.map(function (k) { return ca ? ca.v[k] : null; }), color: "#2a78d6" }, { name: "EBITDA", values: mm.map(function (k) { return eb ? eb.v[k] : null; }), color: "#4f46e5" }], height: 230 });
-  }
-  function vueBP(v) {
-    var o = ST.bpOnglet, h = '<div class="entete"><div><h1 class="page">BP détaillé</h1><p class="contrat">Le moteur du prévisionnel : sessions, apprenants, villes, ventes, encaissements avec délais, charges variables' + (complet() ? ", masse salariale nominative" : "") + " ; et la synthèse du classeur.</p></div></div>";
-    h += '<div class="outils"><div class="seg" role="group" aria-label="Onglet"><button type="button" data-o="bp" aria-pressed="' + (o === "bp") + '">BP</button><button type="button" data-o="synthese" aria-pressed="' + (o === "synthese") + '">Synthèse</button></div>' + segGran() + "</div>";
-    h += grille(DATA.sheets[o] || [], "Ligne");
-    v.innerHTML = h; brancherGran(v);
-    v.querySelectorAll("[data-o]").forEach(function (b) { b.addEventListener("click", function () { ST.bpOnglet = b.dataset.o; afficher(); }); });
-  }
   function bilanTable() {
     var B = DATA.bilan, h = '<div class="tab-wrap libre"><table class="t"><thead><tr><th>Poste</th>' + B.cols.map(function (c, i) { return '<th class="' + (i >= 2 ? "est" : "") + '">' + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
     B.rows.forEach(function (r) {
@@ -813,7 +813,165 @@
     return h + "</tbody></table></div>";
   }
   function vueBilan(v) {
-    v.innerHTML = '<div class="entete"><div><h1 class="page">Bilan</h1><p class="contrat">Liasse au 31/12/2025, puis bilan de gestion reconstitué à la fin du dernier mois réalisé, à fin 2026 et fin 2027 (estimés).</p></div></div>' + bilanTable();
+    v.innerHTML = '<div class="entete"><div><h1 class="page">Bilan</h1><p class="contrat">Liasse au 31/12/2025, puis bilan de gestion reconstitué à la fin du dernier mois réalisé, à fin 2026 et fin 2027 (estimés).</p></div></div>' + xtabs("bilan") + bilanTable();
+  }
+
+  // ------------------------------------------------------------------ SOLDE QONTO EN DIRECT (webhook n8n, chiffré avec la clé publique)
+  var LIVE = {};
+  async function majLive() {
+    if (!CFG.live || (!PRIV && !PRIVC) || !DATA) return;
+    try {
+      var r = await fetch(CFG.live + "?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) return;
+      var d = await Coffre.dechiffrer(PRIVC || PRIV, await r.json());
+      LIVE.d = d; LIVE.t = Date.now(); rendreLive();
+    } catch (e) {}
+  }
+  function rendreLive() {
+    var el = $("live"); if (!el) return;
+    if (!LIVE.d) { el.innerHTML = ""; return; }
+    var age = Math.round((Date.now() - LIVE.t) / 60000);
+    el.innerHTML = '<span class="pt"></span>Qonto en ce moment : <strong class="num">' + eur2(LIVE.d.solde) + "</strong>" +
+      (typeof LIVE.d.en_attente === "number" && Math.abs(LIVE.d.en_attente) >= 0.01 ? ' <span class="muted">(' + eur2(LIVE.d.solde + LIVE.d.en_attente) + " avec les opérations en attente)</span>" : "") +
+      ' <span class="muted">' + (age < 1 ? "à l'instant" : "il y a " + age + " min") + "</span>";
+    el.title = "Solde du compte principal, lu sur Qonto et rafraîchi chaque minute quand la page est ouverte. Le reste de la plateforme reflète le classeur de la nuit (arrêté au " + dLong(DATA.meta.arrete) + ").";
+  }
+  setInterval(function () { if (document.visibilityState === "visible") { majLive(); rendreLive(); } }, 60000);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && CFG.live && (!LIVE.t || Date.now() - LIVE.t > 55000)) majLive(); });
+
+  // ------------------------------------------------------------------ SAISIES : cellules bleues modifiables, reprises dans l'Excel cette nuit
+  function saisiesInit() {
+    var S = {};
+    try { S = JSON.parse(localStorage.getItem("treso_saisies") || "{}"); } catch (e) {}
+    if (S.envoye_le && DATA.meta.genere_le && DATA.meta.genere_le > S.envoye_le) S = {};   // la nuit a repris les saisies
+    ST.saisies = S;
+  }
+  function saisiesSet(S) { ST.saisies = S; try { localStorage.setItem("treso_saisies", JSON.stringify(S)); } catch (e) {} majBarre(); }
+  function nbSaisies() {
+    var S = ST.saisies || {}, n = 0;
+    ["hyp", "villes", "equipe"].forEach(function (k) { var d = S[k] || {}; Object.keys(d).forEach(function (x) { n += typeof d[x] === "object" ? Object.keys(d[x]).length : 1; }); });
+    Object.keys(S.bp || {}).forEach(function (s) { n += Object.keys(S.bp[s]).length; });
+    if (S.ponctuels) n += 1;
+    return n;
+  }
+  function pendVal(ek) {
+    var S = ST.saisies || {}, p = ek.split(":");
+    if (p[0] === "hyp") return (S.hyp || {})[p[1]];
+    if (p[0] === "bp") return ((S.bp || {})[p[1]] || {})[p[2]];
+    if (p[0] === "ville") return ((S.villes || {})[p[1]] || {})[p[2]];
+    if (p[0] === "equipe") return ((S.equipe || {})[p[1]] || {})[p[2]];
+  }
+  function brutDe(ek) {
+    var p = ek.split(":");
+    if (p[0] === "hyp") { var r = (DATA.hypotheses || []).find(function (x) { return x.cle === p[1]; }); return r && r.v; }
+    if (p[0] === "bp") { var r2 = (DATA.sheets.bp || []).find(function (x) { return x.edit === p[1]; }); return r2 && r2.v[p[2]]; }
+    if (p[0] === "ville") { var v2 = ((DATA.saisies || {}).villes || []).find(function (x) { return x.ville === p[1]; }); return v2 && v2[p[2]]; }
+    if (p[0] === "equipe") { var e2 = ((DATA.saisies || {}).equipe || []).find(function (x) { return x.nom === p[1]; }); return e2 && e2[p[2]]; }
+  }
+  function parseSaisie(txt) {
+    var t = String(txt == null ? "" : txt).trim();
+    if (t === "") return null;
+    var n = t.replace(/[\s  ]/g, "").replace(",", ".");
+    return /^-?\d+(\.\d+)?$/.test(n) ? parseFloat(n) : t;
+  }
+  function poserSaisie(ek, val) {
+    var S = ST.saisies || {}, p = ek.split(":"), brut = brutDe(ek);
+    var pareil = (val === brut) || (val == null && brut == null) || (typeof val === "number" && typeof brut === "number" && Math.abs(val - brut) < 1e-9);
+    function cible(k, a) { S[k] = S[k] || {}; if (pareil) { if (S[k][a]) delete S[k][a][p[2]]; if (S[k][a] && !Object.keys(S[k][a]).length) delete S[k][a]; } else { S[k][a] = S[k][a] || {}; S[k][a][p[2]] = val; } }
+    if (p[0] === "hyp") { S.hyp = S.hyp || {}; if (pareil) delete S.hyp[p[1]]; else S.hyp[p[1]] = val; }
+    else if (p[0] === "bp") cible("bp", p[1]);
+    else if (p[0] === "ville") cible("villes", p[1]);
+    else if (p[0] === "equipe") cible("equipe", p[1]);
+    delete S.envoye_le;                                   // nouvelle saisie : il faudra renvoyer
+    saisiesSet(S);
+  }
+  function tdVal(v, nf, ek, cls) {
+    var pv = ek ? pendVal(ek) : undefined, pend = pv !== undefined, shown = pend ? pv : v;
+    var txt = shown == null ? "" : (typeof shown === "number" ? parNf(shown, nf) : esc(shown));
+    return '<td class="r' + (cls ? " " + cls : "") + (ek ? " edit" : "") + (pend ? " pend" : "") + '"' + (ek ? ' data-ek="' + esc(ek) + '"' : "") + ">" + txt + (pend ? '<span class="att">en attente (cette nuit)</span>' : "") + "</td>";
+  }
+  function brancherEdition(v) {
+    v.addEventListener("click", function (e) {
+      var td = e.target.closest("td.edit");
+      if (!td || td.querySelector("input")) return;
+      if (!EDIT) { toast("Ouvrez l'accès complet et édition (votre code) pour modifier les cellules bleues, comme dans l'Excel."); return; }
+      var ek = td.dataset.ek, cur = pendVal(ek); if (cur === undefined) cur = brutDe(ek);
+      td.innerHTML = '<input value="' + esc(cur == null ? "" : cur) + '" aria-label="Nouvelle valeur">';
+      var inp = td.querySelector("input"), fini = false;
+      function fin(ok) { if (fini) return; fini = true; if (ok) { var val = parseSaisie(inp.value); poserSaisie(ek, val); } afficher(); }
+      inp.focus(); inp.select();
+      inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); fin(true); } else if (ev.key === "Escape") fin(false); });
+      inp.addEventListener("blur", function () { fin(true); });
+    });
+  }
+  function majBarre() {
+    var n = nbSaisies(), b = $("barre-saisies"), S = ST.saisies || {};
+    if (!n) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement("div"); b.id = "barre-saisies"; b.className = "barre-saisies"; document.body.appendChild(b); }
+    b.innerHTML = S.envoye_le
+      ? "<span>" + n + " saisie" + (n > 1 ? "s" : "") + " envoyée" + (n > 1 ? "s" : "") + " : reprises dans l'Excel cette nuit.</span><button class=\"btn gris\" type=\"button\" id=\"saisies-raz\">Tout annuler</button>"
+      : "<span>" + n + " saisie" + (n > 1 ? "s" : "") + " en attente</span><button class=\"btn\" type=\"button\" id=\"saisies-go\">Enregistrer dans l'Excel</button><button class=\"btn gris\" type=\"button\" id=\"saisies-raz\">Tout annuler</button>";
+    var go = $("saisies-go"); if (go) go.addEventListener("click", envoyerSaisies);
+    $("saisies-raz").addEventListener("click", function () { saisiesSet({}); afficher(); });
+  }
+  async function envoyerSaisies() {
+    var S = ST.saisies || {}, msg = { ts: new Date().toISOString(), type: "pilotage" };
+    if (S.hyp && Object.keys(S.hyp).length) msg.hyp = S.hyp;
+    if (S.bp && Object.keys(S.bp).length) msg.bp = S.bp;
+    if (S.villes && Object.keys(S.villes).length) msg.villes = Object.keys(S.villes).map(function (n) { return Object.assign({ ville: n }, S.villes[n]); });
+    if (S.equipe && Object.keys(S.equipe).length) msg.equipe = Object.keys(S.equipe).map(function (n) { return Object.assign({ nom: n }, S.equipe[n]); });
+    if (S.ponctuels) msg.ponctuels = S.ponctuels;
+    try {
+      var m = JSON.stringify(msg), sig = await Coffre.signer(EDIT, m);
+      var r = await fetch(CFG.webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "pilotage", message: m, signature: sig }) });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      S.envoye_le = new Date().toISOString().slice(0, 16).replace("T", " ");
+      saisiesSet(S);
+      toast("Saisies enregistrées : l'Excel et toute la plateforme les reprennent à la mise à jour de cette nuit.");
+    } catch (e) { toast("Envoi impossible : " + e.message); }
+  }
+  function blocVilles() {
+    var V = (DATA.saisies || {}).villes || []; if (!V.length) return "";
+    var ch = [["ouverture", "Ouverture"], ["n1", "N1 cible"], ["rampe", "Rampe (mois)"], ["app", "Appr./session"], ["n2", "N2"], ["intra", "Intra"], ["ads", "Ads €"], ["tjm", "TJM"], ["salle", "Salle €"], ["depl", "Dépl. €"]];
+    var h = '<div class="carte section"><h2>Module villes (Hypothèses, section 9)</h2><p class="muted small">Ouvrir une ville = saisir son mois d\'ouverture (aaaa-mm) ; la rampe fait monter les volumes vers la cible. Les ouvertures sont alignées chaque nuit sur le réel Deliv\'IA.</p><div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Ville</th>' + ch.map(function (c) { return '<th class="r">' + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>";
+    V.forEach(function (x) { h += "<tr><td>" + esc(x.ville) + "</td>" + ch.map(function (c) { return tdVal(x[c[0]], null, "ville:" + x.ville + ":" + c[0]); }).join("") + "</tr>"; });
+    return h + "</tbody></table></div></div>";
+  }
+  function blocPonctuels() {
+    var S = ST.saisies || {}, L = S.ponctuels || (DATA.saisies || {}).ponctuels || [];
+    var h = '<div class="carte section"><div class="entete" style="margin-bottom:6px"><h2 style="margin:0">Flux ponctuels prévus (Hypothèses, section 10)</h2>' + (EDIT ? '<button class="btn petit" type="button" id="ponct-plus">Ajouter un flux</button>' : "") + '</div><table class="liste-t"><thead><tr><th>Libellé</th><th>Mois</th><th>Rubrique</th><th class="r">Montant</th>' + (EDIT ? "<th></th>" : "") + "</tr></thead><tbody>";
+    L.forEach(function (x, i) { h += "<tr><td>" + esc(x.libelle || "") + '</td><td class="num">' + esc(x.mois || "") + "</td><td>" + esc(x.rubrique || "") + '</td><td class="r">' + eur2(x.montant) + "</td>" + (EDIT ? '<td><button class="btn-lien" type="button" data-ponct-x="' + i + '">Retirer</button></td>' : "") + "</tr>"; });
+    h += "</tbody></table>" + (!L.length ? '<p class="vide">Aucun flux ponctuel saisi.</p>' : "") + '<p class="muted small">Encaissements en positif, décaissements en négatif. Repris dans le classeur cette nuit.</p></div>';
+    return h;
+  }
+  function brancherPonctuels(v) {
+    var base = function () { return (ST.saisies && ST.saisies.ponctuels) || ((DATA.saisies || {}).ponctuels || []).map(function (x) { return Object.assign({}, x); }); };
+    var plus = $("ponct-plus");
+    if (plus) plus.addEventListener("click", function () {
+      var lib = prompt("Libellé du flux ponctuel :"); if (!lib) return;
+      var mois = prompt("Mois (aaaa-mm) :", IX.cur); if (!mois || !/^\d{4}-\d{2}$/.test(mois.trim())) { toast("Mois attendu au format aaaa-mm."); return; }
+      var rub = prompt("Rubrique (telle que dans la Trésorerie) :", "Autres encaissements") || "";
+      var mt = parseSaisie(prompt("Montant (encaissement en positif, décaissement en négatif) :", "0"));
+      if (typeof mt !== "number") { toast("Montant non compris."); return; }
+      var L = base(); L.push({ libelle: lib.trim(), mois: mois.trim(), rubrique: rub.trim(), montant: mt, src: "plateforme" });
+      var S = ST.saisies || {}; S.ponctuels = L; delete S.envoye_le; saisiesSet(S); afficher();
+    });
+    v.querySelectorAll("[data-ponct-x]").forEach(function (b) { b.addEventListener("click", function () {
+      var L = base(); L.splice(+b.dataset.ponctX, 1);
+      var S = ST.saisies || {}; S.ponctuels = L; delete S.envoye_le; saisiesSet(S); afficher();
+    }); });
+  }
+  function blocEquipe() {
+    var E2 = (DATA.saisies || {}).equipe || [];
+    if (!complet()) return '<div class="carte section"><h2>Équipe salariée (Hypothèses, section 8)</h2><p class="muted small">Table nominative : visible et modifiable dans l\'accès complet et dans l\'Excel.</p></div>';
+    if (!E2.length) return "";
+    var h = '<div class="carte section"><h2>Équipe salariée : paie de référence et plan de recrutement (Hypothèses, section 8)</h2><p class="muted small">Brut, entrée et sortie se modifient ici ; pour ajouter une personne, passez par l\'Excel ou demandez-moi.</p><div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Nom</th><th>Pôle</th><th>Poste</th><th>Type</th><th class="r">Entrée</th><th class="r">Sortie</th><th class="r">Brut €</th><th>Source</th></tr></thead><tbody>';
+    E2.forEach(function (x) {
+      h += "<tr><td>" + esc(x.nom) + "</td><td>" + esc(x.pole || "") + "</td><td>" + esc(x.poste || "") + "</td><td>" + esc(x.type || "") + "</td>" +
+        tdVal(x.entree, null, "equipe:" + x.nom + ":entree") + tdVal(x.sortie, null, "equipe:" + x.nom + ":sortie") + tdVal(x.brut, "#,##0", "equipe:" + x.nom + ":brut") +
+        '<td class="small muted" style="white-space:normal;max-width:260px">' + esc(x.src || "") + "</td></tr>";
+    });
+    return h + "</tbody></table></div></div>";
   }
 
   // ------------------------------------------------------------------ CLASSEUR : la vision Excel, onglet par onglet
@@ -842,68 +1000,64 @@
     if (fq) fq.addEventListener("input", function () { clearTimeout(fq.h); fq.h = setTimeout(function () { ST.xq = fq.value; ST.xn = 250; afficher(); var n = $("x-q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); });
     if ($("x-plus")) $("x-plus").addEventListener("click", function () { ST.xn = (ST.xn || 250) + 500; afficher(); });
   }
-  function grilleTreso(cols) {
-    var h = '<div class="tab-wrap" id="grille"><table class="t"><thead><tr><th>Rubrique</th>' + cols.map(function (c) { return '<th class="' + (c.est ? "est" : "") + '">' + esc(c.lab) + "</th>"; }).join("") + "</tr></thead><tbody>";
-    IX.rows.forEach(function (r) {
-      if (r.label && r.label.toLowerCase().indexOf("contrôle") === 0) return;
-      if (r.t === "band") { h += '<tr class="band"><td>' + esc(r.label) + '</td><td colspan="' + cols.length + '"></td></tr>'; return; }
-      var cls = r.t === "total" ? "total" : "l" + r.lvl;
-      h += '<tr class="' + cls + '"><td><span style="padding-left:' + ((r.lvl || 1) - 1) * 14 + 'px">' + esc(r.label) + "</span></td>";
-      cols.forEach(function (c, ci) {
-        var val = valeur(r, c), cl = val != null && val !== 0 ? " cl" : "";
-        h += '<td class="' + (c.est ? "est" : "") + cl + '" data-c="' + ci + '" data-r="' + esc(r.id) + '">' + (val == null ? "" : eur(val)) + "</td>";
-      });
-      h += "</tr>";
-    });
-    return h + "</tbody></table></div>";
-  }
-  function vueClasseur(v) {
-    var q = (location.hash.split("?")[1] || ""), m = /(?:^|&)o=([a-z]+)/.exec(q);
-    if (m && m[1] !== ST.xo) { ST.xo = m[1]; ST.xq = ""; ST.xn = 250; }
-    if (!ST.xo || ST.xo === "sep") ST.xo = "retenir";
-    var o = ST.xo, D = DATA, h = "";
-    h += '<div class="entete"><div><h1 class="page">Classeur</h1><p class="contrat">La même vision que l\'Excel « ' + esc((D.meta.classeur || "").replace(".xlsx", "")) + ' », onglet par onglet. Chaque chiffre vient d\'une cellule calculée du classeur de cette nuit.</p></div></div>';
-    h += '<div class="xtabs" role="tablist">' + ONGLETS.map(function (x) {
+  function routeOnglet(o) { return o === "treso" ? "tresorerie" : o; }
+  function xtabs(o) {
+    return '<div class="xtabs" role="tablist">' + ONGLETS.map(function (x) {
       if (x[0] === "sep") return '<span class="bd-sep" aria-hidden="true"></span>';
-      if (x[0] === "bdp" && !(D.bd && D.bd.paie && D.bd.paie.length)) return "";
-      return '<button type="button" role="tab" data-xo="' + x[0] + '" aria-pressed="' + (o === x[0]) + '">' + esc(x[1]) + "</button>";
+      if (x[0] === "bdp" && !(DATA.bd && DATA.bd.paie && DATA.bd.paie.length)) return "";
+      return '<a role="tab" href="#/' + routeOnglet(x[0]) + '" aria-pressed="' + (o === x[0]) + '">' + esc(x[1]) + "</a>";
     }).join("") + "</div>";
+  }
+  function enteteOnglet(o, contrat) {
+    var nom = (ONGLETS.find(function (x) { return x[0] === o; }) || [o, o])[1];
+    return '<div class="entete"><div><h1 class="page">' + esc(nom) + '</h1><p class="contrat">' + contrat + " Reflet exact de l'onglet « " + esc(nom) + " » du classeur de cette nuit." + "</p></div></div>" + xtabs(o);
+  }
+  function vueOnglet(v, o) {
+    ST.xo = o;
+    var D = DATA, h = "";
     var gran = '<div class="outils">' + segGran() + "</div>";
     if (o === "retenir") {
+      h += enteteOnglet(o, "Chiffres clés, interprétation, points à trancher et méthode.");
+      var VF = D.meta.verifie;
+      if (VF) h += '<div class="bandeau info">Vérifié le ' + esc(dLong(VF.le)) + " : Qonto affichait " + eur(VF.solde_qonto) + " contre " + eur(VF.solde_arrete) + " à l'arrêté. " + esc(VF.ecart) + "</div>";
       var T = D.textes || {};
       h += '<div class="carte"><h2>Chiffres clés</h2><table class="liste-t"><thead><tr><th>Indicateur</th><th class="r">Valeur</th><th class="r">Repère</th><th>Lecture</th></tr></thead><tbody>' +
         (D.kpis || []).map(function (k) { return '<tr><td>' + esc(k.label) + '</td><td class="r' + (k.est ? " est" : "") + '">' + kVal(k.label, k.value) + '</td><td class="r muted">' + kVal(k.label, k.repere) + '</td><td class="small muted" style="white-space:normal;max-width:440px">' + esc(k.note || "") + "</td></tr>"; }).join("") + "</tbody></table></div>";
       h += '<div class="grille g2 section"><div class="carte"><h2>Interprétation</h2>' + liste(T.interpretation) + '</div><div class="carte"><h2>Points à trancher ou à vérifier</h2>' + liste(T.points) + "</div></div>";
       if (T.methode) h += '<div class="carte section"><h2>Hypothèses et méthode</h2>' + liste(T.methode) + "</div>";
-    } else if (o === "pilotage") {
-      h += '<div class="bandeau info">L\'onglet Pilotage se simule en direct dans <a href="#/pilotage">Pilotage et plan</a> (mêmes formules que le classeur). Ci-dessous, les paramètres tels qu\'ils sont dans l\'Excel.</div>';
-      h += '<div class="carte"><h2>Paramètres (section B du Pilotage)</h2><table class="liste-t"><thead><tr><th>Paramètre</th><th class="r">Retenu</th><th class="r">Mesuré</th><th class="r">Défaut</th><th>Source</th></tr></thead><tbody>' +
-        ((D.pilotage || {}).params || []).map(function (p) { return '<tr><td>' + (p.input ? '<span class="saisie" title="Saisie modifiable"></span>' : "") + esc(p.label) + (p.unit ? ' <span class="muted small">(' + esc(p.unit) + ")</span>" : "") + '</td><td class="r">' + parNf(p.retenu, p.nf) + '</td><td class="r muted">' + (p.mesure == null ? "" : parNf(p.mesure, p.nf)) + '</td><td class="r muted">' + (p.defaut == null ? "" : parNf(p.defaut, p.nf)) + '</td><td class="small muted" style="white-space:normal;max-width:380px">' + esc(p.src || "") + "</td></tr>"; }).join("") + "</tbody></table></div>";
-    } else if (o === "synthese" || o === "cr" || o === "commercial" || o === "bp") {
+    } else if (o === "synthese" || o === "cr" || o === "commercial") {
+      h += enteteOnglet(o, o === "synthese" ? "Trésorerie, activité et résultat, mois par mois puis cumuls." : o === "cr" ? "CA facturé, charges, EBITDA et résultat ; prévisionnel à partir du mois en cours." : "Ventes signées, rémunération des closers et setters.");
       h += gran + grille(D.sheets[o] || [], "Ligne");
-    } else if (o === "treso") {
-      h += gran + grilleTreso(colonnes(plage()));
-    } else if (o === "bilan") {
-      h += bilanTable();
+    } else if (o === "bp") {
+      h += enteteOnglet(o, "Le moteur du prévisionnel : sessions, apprenants, villes, ventes, encaissements avec délais, charges variables." + (EDIT ? " Les cellules bleues se modifient ici, comme dans l'Excel." : ""));
+      h += gran + grille(D.sheets.bp || [], "Ligne", true);
+      h += blocVilles() + blocPonctuels();
     } else if (o === "hypotheses") {
-      h += '<p class="muted small"><span class="saisie"></span>Cellule bleue = saisie d\'Olivier dans le classeur (reprise chaque nuit). Tout le classeur se recalcule à partir de ces valeurs.</p>';
+      h += enteteOnglet(o, "Tous les paramètres du classeur, dont les délais d'encaissement par mode de financement (CPF via Bibby, OPCO, entreprises, particuliers), la TVA et les commissions." + (EDIT ? " Les cellules bleues se modifient ici." : ""));
+      h += '<p class="muted small"><span class="saisie"></span>Cellule bleue = saisie, reprise dans le classeur à la mise à jour de la nuit. La valeur s\'édite en brut, comme dans la barre de formule Excel (0,55 pour 55 %).</p>';
       h += '<div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Paramètre</th><th class="r">Valeur</th><th>Commentaire</th></tr></thead><tbody>';
       (D.hypotheses || []).forEach(function (r) {
         if (r.t === "band") { h += '<tr class="band"><td colspan="3">' + esc(r.label) + "</td></tr>"; return; }
-        h += '<tr><td>' + (r.bleu ? '<span class="saisie" title="Saisie modifiable"></span>' : "") + esc(r.label) + '</td><td class="r">' + (typeof r.v === "number" ? parNf(r.v, r.nf) : esc(r.v == null ? "" : r.v)) + '</td><td class="small muted" style="white-space:normal;max-width:460px">' + esc(r.note || "") + "</td></tr>";
+        var ek = r.cle && r.bleu !== false ? "hyp:" + r.cle : null;
+        h += '<tr><td>' + (ek ? '<span class="saisie" title="Saisie modifiable"></span>' : "") + esc(r.label) + "</td>" + tdVal(r.v, r.nf, ek) + '<td class="small muted" style="white-space:normal;max-width:460px">' + esc(r.note || "") + "</td></tr>";
       });
       h += "</tbody></table></div>";
+      h += blocEquipe() + blocVilles() + blocPonctuels();
     } else if (o === "bdq") {
+      h += enteteOnglet(o, "Toutes les opérations Qonto classées.");
       h += tableLibre([["Date", "n"], ["Montant", "r"], ["Contrepartie"], ["Libellé"], ["Rubrique"], ["Sous-rubrique"], ["Détail"], ["Pôle"], ["Justif."]],
         IX.tx.map(function (t) { return [dCourt(t.date), t.mt, t.cp, t.lib, t.rub, t.sr, t.det, t.pole, t.mt < 0 ? (t.j ? "oui" : "manquant") : ""]; }));
     } else if (o === "bdf") {
+      h += enteteOnglet(o, "Factures clients émises dans Qonto.");
       h += tableLibre([["Numéro", "n"], ["Émise", "n"], ["Échéance", "n"], ["Statut"], ["Payée le", "n"], ["TTC", "r"], ["HT", "r"], ["Payeur"], ["Segment"], ["Client"], ["Intitulé"]],
         IX.fac.map(function (f) { return [f.numero, dCourt(f.date), dCourt(f.echeance), f.statut === "paid" ? "payée" : f.statut === "canceled" ? "annulée" : "impayée", dCourt(f.paye_le), f.ttc, f.ht, f.payeur, f.segment, f.client, f.intitule]; }));
     } else if (o === "bdw") {
+      h += enteteOnglet(o, "Dossiers CPF Wedof : états, facturation, paiements CDC, par SIRET fusionné.");
       var W = (D.bd || {}).wedof || [];
       h += tableLibre([["Dossier", "n"], ["État"], ["Facturation"], ["Montant", "r"], ["Facture", "n"], ["Accepté", "n"], ["Début", "n"], ["Fin", "n"], ["Service fait", "n"], ["Facturé le", "n"], ["Payé le (CDC)", "n"], ["Ville"]],
         W.map(function (d) { return [d.dossier, d.etat, d.facturation, d.montant, d.facture, dCourt(d.acceptation), dCourt(d.debut), dCourt(d.fin), dCourt(d.service_fait), dCourt(d.facture_le), dCourt(d.paye_le), d.ville]; }));
     } else if (o === "bdb") {
+      h += enteteOnglet(o, "Portail Bibby Factor : synthèse, encours et compte courant.");
       var B2 = (D.bd || {}).bibby || {};
       h += '<div class="grille g2"><div class="carte"><h2>Synthèse du portail' + (B2.date ? " au " + esc(dLong(B2.date)) : "") + '</h2><table class="liste-t"><tbody>' +
         (B2.synthese || []).map(function (s) { return "<tr><td>" + esc(s.label) + '</td><td class="r">' + eur2(s.v) + "</td></tr>"; }).join("") + '</tbody></table><p class="muted small">Lecture du portail Bibby en séance avec Olivier ; mise à jour à chaque lecture.</p></div>' +
@@ -912,23 +1066,21 @@
       h += '<div class="carte section"><h2>Compte courant Bibby</h2><div class="tab-wrap libre"><table class="liste-t"><thead><tr><th>Date</th><th>Type</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th></tr></thead><tbody>' +
         ((B2.compte_courant || []).slice().reverse().map(function (r) { return "<tr><td class=\"num\">" + dCourt(r.date) + "</td><td>" + esc(r.type || "") + '</td><td class="r">' + eur2(parseFloat(r.debit) || null) + '</td><td class="r">' + eur2(parseFloat(r.credit) || null) + '</td><td class="r">' + eur2(parseFloat(r.solde) || null) + "</td></tr>"; }).join("")) + "</tbody></table></div></div>";
     } else if (o === "bdp") {
+      h += enteteOnglet(o, "Paie Malibou, mois par mois.");
       var P2 = (D.bd || {}).paie || [];
       h += tableLibre([["Salarié"], ["Poste"], ["Mois", "n"], ["Brut", "r"], ["Ch. salariales", "r"], ["Ch. patronales", "r"], ["Frais hors brut", "r"], ["Coût total", "r"], ["Net versé", "r"]],
         P2.map(function (r) { return [r.salarie, r.poste, r.mois, r.brut, r.ch_sal, r.ch_pat, r.frais, r.cout, r.net]; }));
       if (!complet()) h += '<p class="muted small">Vue équipe : les salaires sont regroupés par poste, sans nom. Le détail nominatif est dans l\'accès complet et dans l\'Excel.</p>';
     } else if (o === "bdv") {
+      h += enteteOnglet(o, "Ventes signées par mois et par source.");
       var V2 = (D.bd || {}).ventes || [];
       h += tableLibre([["Mois", "n"], ["Source"], ["Ventes signées", "r"], ["dont CPF", "r"], ["dont entreprises", "r"], ["dont particuliers", "r"], ["Non renseigné", "r"], ["Nb", "r"]],
         V2.map(function (r) { return [r.mois, r.source, r.total, r.cpf, r.entreprises, r.particuliers, r.nr, r.nb]; }));
     }
     v.innerHTML = h;
-    v.querySelectorAll("[data-xo]").forEach(function (b) { b.addEventListener("click", function () { ST.xo = b.dataset.xo; ST.xq = ""; ST.xn = 250; if (location.hash.indexOf("?") >= 0) history.replaceState(null, "", "#/classeur"); afficher(); }); });
-    brancherLibre(v); brancherGran(v);
-    if (o === "treso") {
-      $("grille").addEventListener("click", function (e) { var td = e.target.closest("td.cl"); if (td) ouvrirCellule(IX.byId[td.dataset.r], colonnes(plage())[+td.dataset.c]); });
-      caler($("grille"), colonnes(plage()));
-    }
+    brancherLibre(v); brancherGran(v); brancherEdition(v); brancherPonctuels(v);
     if (o === "synthese" || o === "cr" || o === "commercial" || o === "bp") caler($("grille"), colonnes(plage()));
+    majBarre();
   }
 
   // ------------------------------------------------------------------ PILOTAGE ET PLAN
@@ -946,7 +1098,7 @@
   function vuePilotage(v) {
     if (!SIM) pilInit();
     var p = DATA.pilotage, R = pilCalc(), T = R.top, PL = planCalc(), h = "";
-    h += '<div class="entete"><div><h1 class="page">Pilotage et plan de réinvestissement</h1><p class="contrat">Peut-on recruter ou mettre plus en ads, à partir de quand, sans passer sous le plancher ? Le plan propose comment réinvestir la trésorerie disponible ; tout se recalcule ici comme dans l\'Excel.</p></div></div>';
+    h += '<div class="entete"><div><h1 class="page">Pilotage et plan de réinvestissement</h1><p class="contrat">L\'onglet Pilotage du classeur, en direct : peut-on recruter ou mettre plus en ads, à partir de quand, sans passer sous le plancher ? Tout se recalcule ici comme dans l\'Excel.</p></div></div>' + xtabs("pilotage");
     if (SIM.modifie) h += '<div class="bandeau info">Simulation en cours : ces chiffres ne sont pas encore dans l\'Excel.' + (EDIT ? " Enregistrez pour les reprendre cette nuit." : " Seul Olivier peut les enregistrer (accès complet et édition).") + "</div>";
     var ok = T.a_pb >= T.a_plancher;
     h += '<div class="grille g4">' + carte("Point bas prévu (e)", eur(T.a_pb), esc(T.a_pb_mois) + ", plancher " + eur(T.a_plancher), '<div style="margin-top:8px"><span class="chip ' + (ok ? "ok" : "ko") + '">' + (ok ? "Au-dessus du plancher" : "Sous le plancher") + "</span></div>", true) +
